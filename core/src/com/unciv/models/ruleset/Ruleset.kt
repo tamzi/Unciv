@@ -32,6 +32,7 @@ class ModOptions {
     var unitsToRemove = HashSet<String>()
     var nationsToRemove = HashSet<String>()
     var uniques = HashSet<String>()
+    val maxXPfromBarbarians = 30
 }
 
 class Ruleset {
@@ -50,6 +51,7 @@ class Ruleset {
     val quests = LinkedHashMap<String, Quest>()
     val specialists = LinkedHashMap<String, Specialist>()
     val policyBranches = LinkedHashMap<String, PolicyBranch>()
+    val policies = LinkedHashMap<String, Policy>()
     val difficulties = LinkedHashMap<String, Difficulty>()
     val mods = LinkedHashSet<String>()
     var modOptions = ModOptions()
@@ -73,6 +75,7 @@ class Ruleset {
         difficulties.putAll(ruleset.difficulties)
         nations.putAll(ruleset.nations)
         policyBranches.putAll(ruleset.policyBranches)
+        policies.putAll(ruleset.policies)
         quests.putAll(ruleset.quests)
         specialists.putAll(ruleset.specialists)
         technologies.putAll(ruleset.technologies)
@@ -92,6 +95,7 @@ class Ruleset {
         difficulties.clear()
         nations.clear()
         policyBranches.clear()
+        policies.clear()
         quests.clear()
         technologies.clear()
         buildings.clear()
@@ -158,9 +162,11 @@ class Ruleset {
             for (branch in policyBranches.values) {
                 branch.requires = ArrayList()
                 branch.branch = branch
+                policies[branch.name] = branch
                 for (policy in branch.policies) {
                     policy.branch = branch
                     if (policy.requires == null) policy.requires = arrayListOf(branch.name)
+                    policies[policy.name] = policy
                 }
                 branch.policies.last().name = branch.name + " Complete"
             }
@@ -217,18 +223,23 @@ class Ruleset {
         val lines = ArrayList<String>()
 
         // Checks for all mods
-        for (unit in units.values)
+        for (unit in units.values) {
             if (unit.upgradesTo == unit.name)
                 lines += "${unit.name} upgrades to itself!"
+            if (!unit.unitType.isCivilian() && unit.strength == 0)
+                lines += "${unit.name} is a military unit but has no assigned strength!"
+            if (unit.unitType.isRanged() && unit.rangedStrength == 0)
+                lines += "${unit.name} is a ranged unit but has no assigned rangedStrength!"
+        }
 
         for (tech in technologies.values) {
-            for (otherTech in tech.column!!.techs) {
-                if (tech != otherTech && otherTech.row == tech.row)
+            for (otherTech in technologies.values) {
+                if (tech != otherTech && otherTech.column == tech.column && otherTech.row == tech.row)
                     lines += "${tech.name} is in the same row as ${otherTech.name}!"
             }
         }
 
-        for(building in buildings.values){
+        for (building in buildings.values) {
             if (building.requiredTech == null && building.cost == 0)
                 lines += "${building.name} must either have an explicit cost or reference an existing tech!"
         }
@@ -241,8 +252,9 @@ class Ruleset {
                 lines += "${unit.name} requires tech ${unit.requiredTech} which does not exist!"
             if (unit.obsoleteTech != null && !technologies.containsKey(unit.obsoleteTech!!))
                 lines += "${unit.name} obsoletes at tech ${unit.obsoleteTech} which does not exist!"
-            if (unit.requiredResource != null && !tileResources.containsKey(unit.requiredResource!!))
-                lines += "${unit.name} requires resource ${unit.requiredResource} which does not exist!"
+            for (resource in unit.getResourceRequirements().keys)
+                if (!tileResources.containsKey(resource))
+                    lines += "${unit.name} requires resource $resource which does not exist!"
             if (unit.upgradesTo != null && !units.containsKey(unit.upgradesTo!!))
                 lines += "${unit.name} upgrades to unit ${unit.upgradesTo} which does not exist!"
             if (unit.replaces != null && !units.containsKey(unit.replaces!!))
@@ -250,17 +262,23 @@ class Ruleset {
             for (promotion in unit.promotions)
                 if (!unitPromotions.containsKey(promotion))
                     lines += "${unit.replaces} contains promotion $promotion which does not exist!"
-            if (unit.upgradesTo != null && units.containsKey(unit.upgradesTo!!) && units[unit.upgradesTo!!]!!.requiredTech == null)
-                lines += "${unit.name} upgrades to ${unit.upgradesTo} which has no required tech!"
+
         }
 
         for (building in buildings.values) {
             if (building.requiredTech != null && !technologies.containsKey(building.requiredTech!!))
                 lines += "${building.name} requires tech ${building.requiredTech} which does not exist!"
-            if (building.requiredResource != null && !tileResources.containsKey(building.requiredResource!!))
-                lines += "${building.name} requires resource ${building.requiredResource} which does not exist!"
+            for (resource in building.getResourceRequirements().keys)
+                if (!tileResources.containsKey(resource))
+                    lines += "${building.name} requires resource $resource which does not exist!"
             if (building.replaces != null && !buildings.containsKey(building.replaces!!))
                 lines += "${building.name} replaces ${building.replaces} which does not exist!"
+            if (building.requiredBuilding != null && !buildings.containsKey(building.requiredBuilding!!))
+                lines += "${building.name} requires ${building.requiredBuilding} which does not exist!"
+            if (building.requiredBuildingInAllCities != null && !buildings.containsKey(building.requiredBuildingInAllCities!!))
+                lines += "${building.name} requires ${building.requiredBuildingInAllCities} in all cities which does not exist!"
+            if (building.providesFreeBuilding != null && !buildings.containsKey(building.providesFreeBuilding!!))
+                lines += "${building.name} provides a free ${building.providesFreeBuilding} which does not exist!"
         }
 
         for (resource in tileResources.values) {
@@ -301,7 +319,7 @@ class Ruleset {
  * save all of the loaded rulesets somewhere for later use
  *  */
 object RulesetCache :HashMap<String,Ruleset>() {
-    fun loadRulesets(consoleMode:Boolean=false, printOutput: Boolean=false) {
+    fun loadRulesets(consoleMode: Boolean = false, printOutput: Boolean = false) {
         clear()
         for (ruleset in BaseRuleset.values()) {
             val fileName = "jsons/${ruleset.fullName}"
@@ -336,17 +354,17 @@ object RulesetCache :HashMap<String,Ruleset>() {
     }
 
 
-    fun getBaseRuleset() = this[BaseRuleset.Civ_V_Vanilla.fullName]!!
+    fun getBaseRuleset() = this[BaseRuleset.Civ_V_Vanilla.fullName]!!.clone() // safeguard, o no-one edits the base ruleset by mistake
 
-    fun getComplexRuleset(gameParameters: GameParameters): Ruleset {
+    fun getComplexRuleset(mods:LinkedHashSet<String>):Ruleset{
         val newRuleset = Ruleset()
-        val loadedMods = gameParameters.mods.filter { containsKey(it) }.map { this[it]!! }
+        val loadedMods = mods.filter { containsKey(it) }.map { this[it]!! }
         if (loadedMods.none { it.modOptions.isBaseRuleset })
-            newRuleset.add(this[gameParameters.baseRuleset.fullName]!!)
+            newRuleset.add(getBaseRuleset())
         for (mod in loadedMods.sortedByDescending { it.modOptions.isBaseRuleset }) {
             newRuleset.add(mod)
             newRuleset.mods += mod.name
-            if(mod.modOptions.isBaseRuleset){
+            if (mod.modOptions.isBaseRuleset) {
                 newRuleset.modOptions = mod.modOptions
             }
         }
@@ -354,12 +372,13 @@ object RulesetCache :HashMap<String,Ruleset>() {
 
         return newRuleset
     }
+
 }
 
 class Specialist: NamedStats() {
     var color = ArrayList<Int>()
     val colorObject by lazy { colorFromRGB(color) }
-    var greatPersonPoints= Stats()
+    var greatPersonPoints = Stats()
 
     companion object {
         internal fun specialistNameByStat(stat: Stat) = when (stat) {

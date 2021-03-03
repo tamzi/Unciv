@@ -167,7 +167,10 @@ class BattleTable(val worldScreen: WorldScreen): Table() {
         if(attacker.isMelee() && (defender.getUnitType().isCivilian()
                         || defender.getUnitType()==UnitType.City && defender.isDefeated())) {
             add("")
-            add(if(defender.getUnitType().isCivilian()) "Captured!".tr() else "Occupied!".tr() )
+            add(if(defender.getUnitType().isCivilian()
+                    && (defender as MapUnitCombatant).unit.hasUnique("Uncapturable")) ""
+            else if(defender.getUnitType().isCivilian()) "Captured!".tr()
+            else "Occupied!".tr())
         }
 
 
@@ -208,7 +211,7 @@ class BattleTable(val worldScreen: WorldScreen): Table() {
         else {
             attackButton.onClick {
                 Battle.moveAndAttack(attacker, attackableTile)
-                worldScreen.mapHolder.unitActionOverlay?.remove() // the overlay was one of attacking
+                worldScreen.mapHolder.removeUnitActionOverlay() // the overlay was one of attacking
                 worldScreen.shouldUpdate = true
             }
         }
@@ -280,7 +283,7 @@ class BattleTable(val worldScreen: WorldScreen): Table() {
         else {
             attackButton.onClick {
                 Battle.nuke(attacker, targetTile)
-                worldScreen.mapHolder.unitActionOverlay?.remove() // the overlay was one of attacking
+                worldScreen.mapHolder.removeUnitActionOverlay() // the overlay was one of attacking
                 worldScreen.shouldUpdate = true
             }
         }
@@ -306,8 +309,9 @@ class BattleTable(val worldScreen: WorldScreen): Table() {
     private fun getHealthBar(currentHealth: Int, maxHealth: Int, expectedDamage:Int): Table {
         val healthBar = Table()
         val totalWidth = 100f
-        fun addHealthToBar(image: Image, amount:Int){
-            healthBar.add(image).size(amount*totalWidth/maxHealth,3f)
+        fun addHealthToBar(image: Image, amount:Int) {
+            val width = totalWidth * amount/maxHealth
+            healthBar.add(image).size(width.coerceIn(0f,totalWidth),3f)
         }
         addHealthToBar(ImageGetter.getDot(Color.BLACK), maxHealth-currentHealth)
 

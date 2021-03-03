@@ -81,12 +81,12 @@ object UnitActions {
                         else "Do you really want to disband this unit?".tr()
                         YesNoPopup(disbandText, { unit.disband(); worldScreen.shouldUpdate = true }).open()
                     }
-                }.takeIf {unit.currentMovement > 0} )
+                }.takeIf { unit.currentMovement > 0 })
     }
 
     private fun addCreateWaterImprovements(unit: MapUnit, actionList: ArrayList<UnitAction>) {
         val waterImprovementAction = getWaterImprovementAction(unit)
-        if(waterImprovementAction!=null) actionList += waterImprovementAction
+        if (waterImprovementAction != null) actionList += waterImprovementAction
     }
 
     fun getWaterImprovementAction(unit: MapUnit): UnitAction? {
@@ -104,7 +104,7 @@ object UnitActions {
                         action = {
                             tile.improvement = improvement
                             unit.destroy()
-                        }.takeIf {unit.currentMovement > 0})
+                        }.takeIf { unit.currentMovement > 0 })
         }
         return null
     }
@@ -115,7 +115,7 @@ object UnitActions {
                 && tile.roadStatus == RoadStatus.None
                 && tile.improvementInProgress != "Road"
                 && tile.isLand
-                && (improvement.techRequired==null || unit.civInfo.tech.isResearched(improvement.techRequired!!)))
+                && (improvement.techRequired == null || unit.civInfo.tech.isResearched(improvement.techRequired!!)))
             actionList += UnitAction(
                     type = UnitActionType.ConstructRoad,
                     action = {
@@ -129,7 +129,7 @@ object UnitActions {
         if (getFoundCityAction != null) actionList += getFoundCityAction
     }
 
-    fun getFoundCityAction(unit:MapUnit, tile: TileInfo): UnitAction? {
+    fun getFoundCityAction(unit: MapUnit, tile: TileInfo): UnitAction? {
         if (!unit.hasUnique("Founds a new city") || tile.isWater) return null
         return UnitAction(
                 type = UnitActionType.FoundCity,
@@ -168,7 +168,7 @@ object UnitActions {
     private fun addPillageAction(unit: MapUnit, actionList: ArrayList<UnitAction>, worldScreen: WorldScreen) {
         val pillageAction = getPillageAction(unit)
         if (pillageAction == null) return
-        if(pillageAction.action==null)
+        if (pillageAction.action == null)
             actionList += UnitAction(UnitActionType.Pillage, action = null)
         else actionList += UnitAction(type = UnitActionType.Pillage) {
             if (!worldScreen.hasOpenPopups()) {
@@ -192,11 +192,11 @@ object UnitActions {
                         tile.turnsToImprovement = 2
                     }
                     tile.improvement = null
-                    if (tile.resource!=null) tile.getOwner()?.updateDetailedCivResources()    // this might take away a resource
+                    if (tile.resource != null) tile.getOwner()?.updateDetailedCivResources()    // this might take away a resource
 
                     val freePillage = unit.hasUnique("No movement cost to pillage") ||
                             (unit.type.isMelee() && unit.civInfo.hasUnique("Melee units pay no movement cost to pillage"))
-                    if(!freePillage) unit.useMovementPoints(1f)
+                    if (!freePillage) unit.useMovementPoints(1f)
 
                     unit.healBy(25)
 
@@ -210,7 +210,7 @@ object UnitActions {
                     type = UnitActionType.Explore,
                     action = {
                         unit.action = Constants.unitActionExplore
-                        if(unit.currentMovement>0) UnitAutomation.automatedExplore(unit)
+                        if (unit.currentMovement > 0) UnitAutomation.automatedExplore(unit)
                     })
         } else {
             actionList += UnitAction(
@@ -222,7 +222,7 @@ object UnitActions {
 
     private fun addUnitUpgradeAction(unit: MapUnit, actionList: ArrayList<UnitAction>) {
         val upgradeAction = getUpgradeAction(unit)
-        if(upgradeAction!=null) actionList += upgradeAction
+        if (upgradeAction != null) actionList += upgradeAction
     }
 
     fun getUpgradeAction(unit: MapUnit): UnitAction? {
@@ -275,11 +275,12 @@ object UnitActions {
                     }.takeIf { unit.currentMovement > 0 })
         }
 
-        if(unit.isEmbarked()) return
+        if (unit.isEmbarked()) return
 
-        val canConstruct =unit.currentMovement > 0
+        val canConstruct = unit.currentMovement > 0
                 && !tile.isCityCenter()
-                && unit.civInfo.gameInfo.ruleSet.tileImprovements.values.any { tile.canBuildImprovement(it, unit.civInfo) }
+                && unit.civInfo.gameInfo.ruleSet.tileImprovements.values
+                .any { tile.canBuildImprovement(it, unit.civInfo) }
         actionList += UnitAction(
                 type = UnitActionType.ConstructImprovement,
                 isCurrentAction = unit.currentTile.hasImprovementInProgress(),
@@ -296,7 +297,7 @@ object UnitActions {
                         type = UnitActionType.HurryResearch,
                         uncivSound = UncivSound.Chimes,
                         action = {
-                            unit.civInfo.tech.hurryResearch()
+                            unit.civInfo.tech.addScience(unit.civInfo.tech.getScienceFromGreatScientist())
                             addGoldPerGreatPersonUsage(unit.civInfo)
                             unit.destroy()
                         }.takeIf { unit.civInfo.tech.currentTechnologyName() != null })
@@ -308,17 +309,6 @@ object UnitActions {
                         uncivSound = UncivSound.Chimes,
                         action = {
                             unit.civInfo.goldenAges.enterGoldenAge(turnsToGoldenAge)
-                            addGoldPerGreatPersonUsage(unit.civInfo)
-                            unit.destroy()
-                        }.takeIf { unit.currentTile.getOwner() != null && unit.currentTile.getOwner() == unit.civInfo })
-            }
-            // As of 3.10.7 This is to be deprecated and converted to "Can start an []-turn golden age" - keeping it here to that mods with this can still work for now
-            "Can start an 8-turn golden age" -> {
-                actionList += UnitAction(
-                        type = UnitActionType.StartGoldenAge,
-                        uncivSound = UncivSound.Chimes,
-                        action = {
-                            unit.civInfo.goldenAges.enterGoldenAge(8)
                             addGoldPerGreatPersonUsage(unit.civInfo)
                             unit.destroy()
                         }.takeIf { unit.currentTile.getOwner() != null && unit.currentTile.getOwner() == unit.civInfo })
@@ -369,7 +359,9 @@ object UnitActions {
         val finalActions = ArrayList<UnitAction>()
         for (unique in unit.getMatchingUniques("Can construct []")) {
             val improvementName = unique.params[0]
-            finalActions +=  UnitAction(
+            val improvement = tile.ruleset.tileImprovements[improvementName]
+            if (improvement == null) continue
+            finalActions += UnitAction(
                     type = UnitActionType.Create,
                     title = "Create [$improvementName]",
                     uncivSound = UncivSound.Chimes,
@@ -390,12 +382,13 @@ object UnitActions {
                         }
                         addGoldPerGreatPersonUsage(unit.civInfo)
                         unit.destroy()
-                    }.takeIf { unit.currentMovement > 0f && !tile.isWater &&
-                            !tile.isCityCenter() && !tile.isImpassible() &&
-                            tile.improvement != improvementName &&
-                            // citadel can be built only next to or within own borders
-                            (improvementName != Constants.citadel ||
-                                    tile.neighbors.any { it.getOwner() == unit.civInfo })})
+                    }.takeIf {
+                        unit.currentMovement > 0f && tile.canBuildImprovement(improvement, unit.civInfo)
+                                && !tile.isImpassible() && // Not 100% sure that this check is necessary...
+                                // citadel can be built only next to or within own borders
+                                (improvementName != Constants.citadel ||
+                                        tile.neighbors.any { it.getOwner() == unit.civInfo })
+                    })
         }
         return finalActions
     }
@@ -414,7 +407,7 @@ object UnitActions {
             val otherCiv = tile.getOwner()
             if (otherCiv != null) {
                 // decrease relations for -10 pt/tile
-                if(!otherCiv.knows(unit.civInfo)) otherCiv.meetCivilization(unit.civInfo)
+                if (!otherCiv.knows(unit.civInfo)) otherCiv.meetCivilization(unit.civInfo)
                 otherCiv.getDiplomacyManager(unit.civInfo).addModifier(DiplomaticModifiers.StealingTerritory, -10f)
                 notifications.add(otherCiv)
             }

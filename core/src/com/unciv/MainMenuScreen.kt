@@ -14,6 +14,7 @@ import com.unciv.logic.map.MapParameters
 import com.unciv.logic.map.MapSize
 import com.unciv.logic.map.MapType
 import com.unciv.models.ruleset.RulesetCache
+import com.unciv.models.translations.tr
 import com.unciv.ui.MultiplayerScreen
 import com.unciv.ui.mapeditor.*
 import com.unciv.ui.newgamescreen.GameSetupInfo
@@ -104,7 +105,7 @@ class MainMenuScreen: CameraStageBaseScreen() {
         column2.add(mapEditorScreenTable).row()
 
         val modsTable = getTableBlock("Mods", "OtherIcons/Mods")
-        { game.setScreen(ModManagementScreen()) }
+            { game.setScreen(ModManagementScreen()) }
         column2.add(modsTable).row()
 
 
@@ -124,6 +125,20 @@ class MainMenuScreen: CameraStageBaseScreen() {
         scroll.center(stage)
         scroll.setOverscroll(false, false)
         stage.addActor(scroll)
+
+        onBackButtonClicked {
+            if(hasOpenPopups()) {
+                closeAllPopups()
+                return@onBackButtonClicked
+            }
+            val promptWindow = Popup(this)
+            promptWindow.addGoodSizedLabel("Do you want to exit the game?".tr())
+            promptWindow.row()
+            promptWindow.addButton("Yes") { Gdx.app.exit() }
+            promptWindow.addButton("No") { promptWindow.close() }
+            // show the dialog
+            promptWindow.open()     // true = always on top
+        }
     }
 
 
@@ -142,7 +157,7 @@ class MainMenuScreen: CameraStageBaseScreen() {
             add(newMapButton).row()
 
             val loadMapButton = screen.getTableBlock("Load map", "OtherIcons/Load") {
-                val loadMapScreen = LoadMapScreen(null)
+                val loadMapScreen = SaveAndLoadMapScreen(null)
                 loadMapScreen.closeButton.isVisible = true
                 loadMapScreen.closeButton.onClick {
                     screen.game.setScreen(MainMenuScreen())
@@ -166,15 +181,21 @@ class MainMenuScreen: CameraStageBaseScreen() {
     private fun autoLoadGame() {
         ToastPopup("Loading...", this)
         thread { // Load game from file to class on separate thread to avoid ANR...
-            val savedGame: GameInfo
+            var savedGame: GameInfo
             try {
                 savedGame = GameSaver.loadGameByName(autosave)
             } catch (outOfMemory: OutOfMemoryError) {
-                ToastPopup("Not enough memory on phone to load game!", this)
+                Gdx.app.postRunnable { ToastPopup("Not enough memory on phone to load game!", this) }
                 return@thread
-            } catch (ex: Exception) { // silent fail if we can't read the autosave for any reason
-                ToastPopup("Cannot resume game!", this)
-                return@thread
+            } catch (ex: Exception) { // silent fail if we can't read the autosave for any reason - try to load the last autosave by turn number first
+                // This can help for situations when the autosave is corrupted
+                try {
+                    val autosaves = GameSaver.getSaves().filter { it.name() != autosave && it.name().startsWith(autosave) }
+                    savedGame = GameSaver.loadGameFromFile(autosaves.maxBy { it.lastModified() }!!)
+                } catch (ex: Exception) {
+                    Gdx.app.postRunnable { ToastPopup("Cannot resume game!", this) }
+                    return@thread
+                }
             }
 
             Gdx.app.postRunnable { /// ... and load it into the screen on main thread for GL context

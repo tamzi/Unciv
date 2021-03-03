@@ -21,11 +21,12 @@ class CityTileGroup(private val city: CityInfo, tileInfo: TileInfo, tileSetStrin
             icons.addPopulationIcon(ImageGetter.getImage("OtherIcons/Star")
                     .apply { color = Color.GOLD })
         }
-
+        unitLayerGroup.isVisible = false
+        unitImageLayerGroup.isVisible = false
     }
 
     fun update() {
-        super.update(city.civInfo, true)
+        super.update(city.civInfo, true, false)
 
         // this needs to happen on update, because we can buy tiles, which changes the definition of the bought tiles...
         when {
@@ -39,7 +40,7 @@ class CityTileGroup(private val city: CityInfo, tileInfo: TileInfo, tileSetStrin
                 baseLayerGroup.color.a = 0.5f
             }
 
-            tileInfo.isWorked() && tileInfo.getWorkingCity()!=city -> {
+            tileInfo.isWorked() && tileInfo.getWorkingCity() != city -> {
                 // Don't fade out, but don't add a population icon either.
                 baseLayerGroup.color.a = 0.5f
             }
@@ -71,13 +72,12 @@ class CityTileGroup(private val city: CityInfo, tileInfo: TileInfo, tileSetStrin
         yieldGroup.setScale(0.7f)
         yieldGroup.toFront()
         yieldGroup.centerX(this)
-        yieldGroup.y= height * 0.25f - yieldGroup.height / 2
+        yieldGroup.y = height * 0.25f - yieldGroup.height / 2
 
         if (tileInfo.isWorked()) {
             yieldGroup.color = Color.WHITE
-        }
-        else if(!tileInfo.isCityCenter()){
-            yieldGroup.color = Color.GRAY.cpy().apply { a=0.5f }
+        } else if (!tileInfo.isCityCenter()) {
+            yieldGroup.color = Color.GRAY.cpy().apply { a = 0.5f }
         }
     }
 
@@ -88,12 +88,8 @@ class CityTileGroup(private val city: CityInfo, tileInfo: TileInfo, tileSetStrin
             populationIcon.setPosition(width / 2 - populationIcon.width / 2,
                     height * 0.85f - populationIcon.height / 2)
 
-            if (tileInfo.isWorked()) {
-                populationIcon.color = Color.WHITE
-            }
-            else if(!tileInfo.isCityCenter()){
-                populationIcon.color = Color.GRAY.cpy()
-            }
+            if (tileInfo.isWorked()) populationIcon.color = Color.WHITE
+            else if (!tileInfo.isCityCenter()) populationIcon.color = Color.GRAY.cpy()
 
             populationIcon.toFront()
         }

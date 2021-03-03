@@ -38,7 +38,7 @@ class WorldTileGroup(internal val worldScreen: WorldScreen, tileInfo: TileInfo, 
             // remove city buttons in unexplored tiles during spectating/fog of war
             updateCityButton(null, showEntireMap)
 
-        super.update(viewingCiv, UncivGame.Current.settings.showResourcesAndImprovements)
+        super.update(viewingCiv, UncivGame.Current.settings.showResourcesAndImprovements, UncivGame.Current.settings.showTileYields)
     }
 
 
@@ -63,4 +63,5 @@ class WorldTileGroup(internal val worldScreen: WorldScreen, tileInfo: TileInfo, 
         return worldScreen.bottomUnitTable.citySelected(city)
     }
 
+    override fun clone(): WorldTileGroup = WorldTileGroup(worldScreen, tileInfo , tileSetStrings)
 }

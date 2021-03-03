@@ -13,7 +13,7 @@ import com.unciv.logic.GameSaver
 import com.unciv.ui.utils.ORIGINAL_FONT_SIZE
 import java.io.File
 
-class AndroidLauncher : AndroidApplication() {
+open class AndroidLauncher : AndroidApplication() {
     private var customSaveLocationHelper: CustomSaveLocationHelperAndroid? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,7 +29,7 @@ class AndroidLauncher : AndroidApplication() {
             if(externalfilesDir!=null) GameSaver.externalFilesDirForAndroid = externalfilesDir.path
 		}
 
-        val config = AndroidApplicationConfiguration().apply { useImmersiveMode = true }
+        val config = AndroidApplicationConfiguration().apply { useImmersiveMode = true; }
         val androidParameters = UncivGameParameters(
                 version = BuildConfig.VERSION_NAME,
                 crashReportSender = CrashReportSenderAndroid(this),
@@ -88,3 +88,5 @@ class AndroidLauncher : AndroidApplication() {
         super.onActivityResult(requestCode, resultCode, data)
     }
 }
+
+class AndroidTvLauncher:AndroidLauncher()

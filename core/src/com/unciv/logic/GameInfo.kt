@@ -5,6 +5,7 @@ import com.unciv.Constants
 import com.unciv.UncivGame
 import com.unciv.logic.automation.NextTurnAutomation
 import com.unciv.logic.city.CityConstructions
+import com.unciv.logic.city.PerpetualConstruction
 import com.unciv.logic.civilization.*
 import com.unciv.logic.map.TileInfo
 import com.unciv.logic.map.TileMap
@@ -21,21 +22,29 @@ import kotlin.collections.ArrayList
 class UncivShowableException(missingMods: String) : Exception(missingMods)
 
 class GameInfo {
-    @Transient lateinit var difficultyObject: Difficulty // Since this is static game-wide, and was taking a large part of nextTurn
-    @Transient lateinit var currentPlayerCiv:CivilizationInfo // this is called thousands of times, no reason to search for it with a find{} every time
+    @Transient
+    lateinit var difficultyObject: Difficulty // Since this is static game-wide, and was taking a large part of nextTurn
+
+    @Transient
+    lateinit var currentPlayerCiv: CivilizationInfo // this is called thousands of times, no reason to search for it with a find{} every time
+
     /** This is used in multiplayer games, where I may have a saved game state on my phone
      * that is inconsistent with the saved game on the cloud */
-    @Transient var isUpToDate=false
-    @Transient lateinit var ruleSet:Ruleset
+    @Transient
+    var isUpToDate = false
+
+    @Transient
+    lateinit var ruleSet: Ruleset
 
     var civilizations = mutableListOf<CivilizationInfo>()
-    var difficulty="Chieftain" // difficulty is game-wide, think what would happen if 2 human players could play on different difficulties?
+    var difficulty = "Chieftain" // difficulty is game-wide, think what would happen if 2 human players could play on different difficulties?
     var tileMap: TileMap = TileMap()
-    var gameParameters= GameParameters()
+    var gameParameters = GameParameters()
     var turns = 0
-    var oneMoreTurnMode=false
-    var currentPlayer=""
+    var oneMoreTurnMode = false
+    var currentPlayer = ""
     var gameId = UUID.randomUUID().toString() // random string
+
     @Volatile
     var customSaveLocation: String? = null
 
@@ -52,9 +61,9 @@ class GameInfo {
         val toReturn = GameInfo()
         toReturn.tileMap = tileMap.clone()
         toReturn.civilizations.addAll(civilizations.map { it.clone() })
-        toReturn.currentPlayer=currentPlayer
+        toReturn.currentPlayer = currentPlayer
         toReturn.turns = turns
-        toReturn.difficulty=difficulty
+        toReturn.difficulty = difficulty
         toReturn.gameParameters = gameParameters
         toReturn.gameId = gameId
         toReturn.oneMoreTurnMode = oneMoreTurnMode
@@ -65,11 +74,11 @@ class GameInfo {
     fun getPlayerToViewAs(): CivilizationInfo {
         if (!gameParameters.isOnlineMultiplayer) return currentPlayerCiv // non-online, play as human player
         val userId = UncivGame.Current.settings.userId
-        if (civilizations.any { it.playerId == userId}) return civilizations.first { it.playerId == userId }
+        if (civilizations.any { it.playerId == userId }) return civilizations.first { it.playerId == userId }
         else return getBarbarianCivilization()// you aren't anyone. How did you even get this game? Can you spectate?
     }
 
-    fun getCivilization(civName:String) = civilizations.first { it.civName==civName }
+    fun getCivilization(civName: String) = civilizations.first { it.civName == civName }
     fun getCurrentPlayerCivilization() = currentPlayerCiv
     fun getBarbarianCivilization() = getCivilization(Constants.barbarians)
     fun getDifficulty() = difficultyObject
@@ -84,24 +93,29 @@ class GameInfo {
         var currentPlayerIndex = civilizations.indexOf(thisPlayer)
 
 
-        fun switchTurn(){
+        fun switchTurn() {
             thisPlayer.endTurn()
-            currentPlayerIndex = (currentPlayerIndex+1) % civilizations.size
-            if(currentPlayerIndex==0){
+            currentPlayerIndex = (currentPlayerIndex + 1) % civilizations.size
+            if (currentPlayerIndex == 0) {
                 turns++
             }
             thisPlayer = civilizations[currentPlayerIndex]
             thisPlayer.startTurn()
         }
 
-        switchTurn()
+        //check is important or else switchTurn
+        //would skip a turn if an AI civ calls nextTurn
+        //this happens when resigning a multiplayer game
+        if (thisPlayer.isPlayerCivilization()){
+            switchTurn()
+        }
 
         while (thisPlayer.playerType == PlayerType.AI
-            || turns < UncivGame.Current.simulateUntilTurnForDebug
-                || (turns < simulateMaxTurns && simulateUntilWin)
+                || turns < UncivGame.Current.simulateUntilTurnForDebug
+                || turns < simulateMaxTurns && simulateUntilWin
                 // For multiplayer, if there are 3+ players and one is defeated or spectator,
                 // we'll want to skip over their turn
-                || ((thisPlayer.isDefeated() || thisPlayer.isSpectator()) && gameParameters.isOnlineMultiplayer)
+                || gameParameters.isOnlineMultiplayer && (thisPlayer.isDefeated() || thisPlayer.isSpectator())
         ) {
             if (!thisPlayer.isDefeated() || thisPlayer.isBarbarian()) {
                 NextTurnAutomation.automateCivMoves(thisPlayer)
@@ -159,8 +173,7 @@ class GameInfo {
                 val unitName = tile.militaryUnit!!.name
                 thisPlayer.addNotification("An enemy [$unitName] was spotted $inOrNear our territory", tile.position, Color.RED)
             }
-        }
-        else {
+        } else {
             val positions = tiles.map { it.position }
             thisPlayer.addNotification("[${positions.size}] enemy units were spotted $inOrNear our territory", Color.RED, LocationAction(positions))
         }
@@ -215,15 +228,15 @@ class GameInfo {
         val barbarianCiv = getBarbarianCivilization()
         barbarianCiv.tech.techsResearched = allResearchedTechs.toHashSet()
         val unitList = ruleSet.units.values
-                .filter { !it.unitType.isCivilian()}
+                .filter { !it.unitType.isCivilian() }
                 .filter { it.isBuildable(barbarianCiv) }
 
         val landUnits = unitList.filter { it.unitType.isLandUnit() }
         val waterUnits = unitList.filter { it.unitType.isWaterUnit() }
 
-        val unit:String
-        if(waterUnits.isNotEmpty() && tileToPlace.isCoastalTile() && Random().nextBoolean())
-            unit=waterUnits.random().name
+        val unit: String
+        if (waterUnits.isNotEmpty() && tileToPlace.isCoastalTile() && Random().nextBoolean())
+            unit = waterUnits.random().name
         else unit = landUnits.random().name
 
         tileMap.placeUnitNearTile(tileToPlace.position, unit, getBarbarianCivilization())
@@ -234,8 +247,10 @@ class GameInfo {
      * adopted Honor policy and have explored the [tile] where the Barbarian Encampent has spawned.
      */
     fun notifyCivsOfBarbarianEncampment(tile: TileInfo) {
-        civilizations.filter { it.hasUnique("Notified of new Barbarian encampments")
-                && it.exploredTiles.contains(tile.position) }
+        civilizations.filter {
+            it.hasUnique("Notified of new Barbarian encampments")
+                    && it.exploredTiles.contains(tile.position)
+        }
                 .forEach { it.addNotification("A new barbarian encampment has spawned!", tile.position, Color.RED) }
     }
 
@@ -243,7 +258,7 @@ class GameInfo {
     // will be done here, and not in CivInfo.setTransients or CityInfo
     fun setTransients() {
         tileMap.gameInfo = this
-        ruleSet = RulesetCache.getComplexRuleset(gameParameters)
+        ruleSet = RulesetCache.getComplexRuleset(gameParameters.mods)
         // any mod the saved game lists that is currently not installed causes null pointer
         // exceptions in this routine unless it contained no new objects or was very simple.
         // Player's fault, so better complain early:
@@ -254,14 +269,7 @@ class GameInfo {
             throw UncivShowableException("Missing mods: [$missingMods]")
         }
 
-        // Mods can change, leading to things on the map that are no longer defined in the mod.
-        // So we remove them so the game doesn't crash when it tries to access them.
-        for (tile in tileMap.values) {
-            if (tile.resource != null && !ruleSet.tileResources.containsKey(tile.resource!!))
-                tile.resource = null
-            if (tile.improvement != null && !ruleSet.tileImprovements.containsKey(tile.improvement!!))
-                tile.improvement = null
-        }
+        removeMissingModReferences()
 
         tileMap.setTransients(ruleSet)
 
@@ -306,23 +314,66 @@ class GameInfo {
             for (cityInfo in civInfo.cities) cityInfo.cityStats.updateCityHappiness()
 
             for (cityInfo in civInfo.cities) {
-                if (cityInfo.cityConstructions.currentConstruction != "") { // move it to the top of the queue
-                    val constructionQueue = cityInfo.cityConstructions.constructionQueue
-                    val itemsInQueue = constructionQueue.toList()
-                    constructionQueue.clear()
-                    constructionQueue.add(cityInfo.cityConstructions.currentConstruction)
-                    constructionQueue.addAll(itemsInQueue)
-                    cityInfo.cityConstructions.currentConstruction = ""
-                }
-
-                // As of 3.10.14, specialists are saved by name not by stat
-                for((key, value) in cityInfo.population.specialists.toHashMap().filter { it.value>0 })
-                    cityInfo.population.specialistAllocations.add(
-                            Specialist.specialistNameByStat(key), value.toInt())
-                cityInfo.population.specialists.clear()
+                /** We remove constructions from the queue that aren't defined in the ruleset.
+                 * This can lead to situations where the city is puppeted and had its construction removed, and there's no way to user-set it
+                 * So for cities like those, we'll auto-set the construction
+                 */
+                if (cityInfo.isPuppet && cityInfo.cityConstructions.constructionQueue.isEmpty())
+                    cityInfo.cityConstructions.chooseNextConstruction()
 
                 cityInfo.cityStats.update()
             }
+        }
+    }
+
+
+    // Mods can change, leading to things on the map that are no longer defined in the mod.
+    // So we remove them so the game doesn't crash when it tries to access them.
+    private fun removeMissingModReferences() {
+        for (tile in tileMap.values) {
+            if (tile.terrainFeature != null && !ruleSet.terrains.containsKey(tile.terrainFeature!!))
+                tile.terrainFeature = null
+            if (tile.resource != null && !ruleSet.tileResources.containsKey(tile.resource!!))
+                tile.resource = null
+            if (tile.improvement != null && !ruleSet.tileImprovements.containsKey(tile.improvement!!)
+                    && !tile.improvement!!.startsWith("StartingLocation ")) // To not remove the starting locations in GameStarter.startNewGame()
+                tile.improvement = null
+
+            for (unit in tile.getUnits()) {
+                if (!ruleSet.units.containsKey(unit.name)) tile.removeUnit(unit)
+
+                for (promotion in unit.promotions.promotions.toList())
+                    if (!ruleSet.unitPromotions.containsKey(promotion))
+                        unit.promotions.promotions.remove(promotion)
+            }
+        }
+
+        for (city in civilizations.asSequence().flatMap { it.cities.asSequence() }) {
+            for (building in city.cityConstructions.builtBuildings.toHashSet())
+                if (!ruleSet.buildings.containsKey(building))
+                    city.cityConstructions.builtBuildings.remove(building)
+
+            fun isInvalidConstruction(construction: String) = !ruleSet.buildings.containsKey(construction) && !ruleSet.units.containsKey(construction)
+                    && !PerpetualConstruction.perpetualConstructionsMap.containsKey(construction)
+
+            // Remove invalid buildings or units from the queue - don't just check buildings and units because it might be a special construction as well
+            for (construction in city.cityConstructions.constructionQueue.toList()) {
+                if (isInvalidConstruction(construction))
+                    city.cityConstructions.constructionQueue.remove(construction)
+            }
+            // And from being in progress
+            for (construction in city.cityConstructions.inProgressConstructions.keys.toList())
+                if (isInvalidConstruction(construction))
+                    city.cityConstructions.inProgressConstructions.remove(construction)
+        }
+
+        for (civinfo in civilizations) {
+            for (tech in civinfo.tech.techsResearched.toList())
+                if (!ruleSet.technologies.containsKey(tech))
+                    civinfo.tech.techsResearched.remove(tech)
+            for (policy in civinfo.policies.adoptedPolicies.toList())
+                if (!ruleSet.policies.containsKey(policy))
+                    civinfo.policies.adoptedPolicies.remove(policy)
         }
     }
 
@@ -331,7 +382,7 @@ class GameInfo {
             cityConstructions.builtBuildings.remove(oldBuildingName)
             cityConstructions.builtBuildings.add(newBuildingName)
         }
-        cityConstructions.constructionQueue.replaceAll { if(it==oldBuildingName) newBuildingName else it }
+        cityConstructions.constructionQueue.replaceAll { if (it == oldBuildingName) newBuildingName else it }
         if (cityConstructions.inProgressConstructions.containsKey(oldBuildingName)) {
             cityConstructions.inProgressConstructions[newBuildingName] = cityConstructions.inProgressConstructions[oldBuildingName]!!
             cityConstructions.inProgressConstructions.remove(oldBuildingName)
