@@ -2,9 +2,13 @@ package com.unciv.models.translations
 
 import com.badlogic.gdx.Gdx
 import com.unciv.UncivGame
+import com.unciv.models.ruleset.RulesetCache
+import com.unciv.models.ruleset.unique.Unique
+import com.unciv.models.stats.Stat
 import com.unciv.models.stats.Stats
+import com.unciv.utils.Log
+import com.unciv.utils.debug
 import java.util.*
-import kotlin.collections.HashMap
 
 /**
  *  This collection holds all translations for the game.
@@ -30,7 +34,11 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
     var percentCompleteOfLanguages = HashMap<String,Int>()
             .apply { put("English",100) } // So even if we don't manage to load the percentages, we can still pass the language screen
 
-    private var modsWithTranslations: HashMap<String, Translations> = hashMapOf() // key == mod name
+    internal var modsWithTranslations: HashMap<String, Translations> = hashMapOf() // key == mod name
+
+    // used by tr() whenever GameInfo not initialized (allowing new game screen to use mod translations)
+    var translationActiveMods = LinkedHashSet<String>()
+
 
     /**
      * Searches for the translation entry of a given [text] for a given [language].
@@ -43,12 +51,13 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
      * @return the translation entry or null when not available
      */
     fun get(text: String, language: String, activeMods: HashSet<String>? = null): TranslationEntry? {
-        activeMods?.forEach {
-            modsWithTranslations[it]?.let { modTranslations ->
-                val translationEntry = modTranslations[text]?.get(language)
-                if (translationEntry != null) return modTranslations[text]
+        if (activeMods != null)
+            for (activeMod in activeMods) {
+                val modTranslations = modsWithTranslations[activeMod] ?: continue
+                val translationEntry = modTranslations[text]
+                if (translationEntry?.get(language) != null)
+                    return translationEntry
             }
-        }
 
         return this[text]
     }
@@ -60,18 +69,17 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
         return get(text, language, activeMods)?.get(language) ?: text
     }
 
-    fun getLanguages(): List<String> {
-        val toReturn =  mutableListOf<String>()
+    /** Get all languages present in `this`, used for [TranslationFileWriter] and `TranslationTests` */
+    fun getLanguages() = linkedSetOf<String>().apply {
+            for (entry in values)
+                for (languageName in entry.keys)
+                    add(languageName)
+        }
 
-        for(entry in values)
-            for(languageName in entry.keys)
-                if(!toReturn.contains(languageName)) toReturn.add(languageName)
-
-        return toReturn
-    }
-
-
-    private fun tryReadTranslationForLanguage(language: String, printOutput: Boolean) {
+    /** This reads all translations for a specific language, including _all_ installed mods.
+     *  Vanilla translations go into `this` instance, mod translations into [modsWithTranslations].
+     */
+    private fun tryReadTranslationForLanguage(language: String) {
         val translationStart = System.currentTimeMillis()
 
         val translationFileName = "jsons/translations/$language.properties"
@@ -82,47 +90,51 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
             // which is super odd because everyone should support UTF-8
             languageTranslations = TranslationFileReader.read(Gdx.files.internal(translationFileName))
         } catch (ex: Exception) {
+            Log.error("Exception reading translations for $language", ex)
             return
         }
 
         // try to load the translations from the mods
-        for (modFolder in Gdx.files.local("mods").list()) {
+        for (modFolder in RulesetCache.values.mapNotNull { it.folderLocation }) {
             val modTranslationFile = modFolder.child(translationFileName)
             if (modTranslationFile.exists()) {
-                val translationsForMod = Translations()
-                createTranslations(language, TranslationFileReader.read(modTranslationFile), translationsForMod)
-
-                modsWithTranslations[modFolder.name()] = translationsForMod
+                var translationsForMod = modsWithTranslations[modFolder.name()]
+                if (translationsForMod == null) {
+                    translationsForMod = Translations()
+                    modsWithTranslations[modFolder.name()] = translationsForMod
+                }
+                try {
+                    translationsForMod.createTranslations(language, TranslationFileReader.read(modTranslationFile))
+                } catch (ex: Exception) {
+                    Log.error("Exception reading translations for ${modFolder.name()} $language", ex)
+                }
             }
         }
 
         createTranslations(language, languageTranslations)
 
-        val translationFilesTime = System.currentTimeMillis() - translationStart
-        if(printOutput) println("Loading translation file for $language - " + translationFilesTime + "ms")
+        debug("Loading translation file for %s - %sms", language, System.currentTimeMillis() - translationStart)
     }
 
-    private fun createTranslations(language: String,
-                                  languageTranslations: HashMap<String,String>,
-                                  targetTranslations: Translations = this) {
+    private fun createTranslations(language: String, languageTranslations: HashMap<String,String>) {
         for (translation in languageTranslations) {
-            val hashKey = if (translation.key.contains('['))
+            val hashKey = if (translation.key.contains('[') && !translation.key.contains('<'))
                 translation.key.getPlaceholderText()
             else translation.key
-            if (!containsKey(hashKey))
-                targetTranslations[hashKey] = TranslationEntry(translation.key)
-
-            // why not in one line, Because there were actual crashes.
-            // I'm pretty sure I solved this already, but hey double-checking doesn't cost anything.
-            val entry = targetTranslations[hashKey]
-            if (entry != null) entry[language] = translation.value
+            var entry = this[hashKey]
+            if (entry == null) {
+                entry = TranslationEntry(translation.key)
+                this[hashKey] = entry
+            }
+            entry[language] = translation.value
         }
     }
 
     fun tryReadTranslationForCurrentLanguage(){
-        tryReadTranslationForLanguage(UncivGame.Current.settings.language, false)
+        tryReadTranslationForLanguage(UncivGame.Current.settings.language)
     }
 
+    /** Get a list of supported languages for [readAllLanguagesTranslation] */
     // This function is too strange for me, however, let's keep it "as is" for now. - JackRainy
     private fun getLanguagesWithTranslationFile(): List<String> {
 
@@ -130,10 +142,10 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
         // So apparently the Locales don't work for everyone, which is horrendous
         // So for those players, which seem to be Android-y, we try to see what files exist directly...yeah =/
         try{
-            for(file in Gdx.files.internal("jsons/translations").list())
+            for (file in Gdx.files.internal("jsons/translations").list())
                 languages.add(file.nameWithoutExtension())
         }
-        catch (ex:Exception){} // Iterating on internal files will not work when running from a .jar
+        catch (ex:Exception) {} // Iterating on internal files will not work when running from a .jar
 
         languages.addAll(Locale.getAvailableLocales() // And this should work for Desktop, meaning from a .jar
                 .map { it.getDisplayName(Locale.ENGLISH) }) // Maybe THIS is the problem, that the DISPLAY locale wasn't english
@@ -152,7 +164,8 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
                 .filter { Gdx.files.internal("jsons/translations/$it.properties").exists() }
     }
 
-    fun readAllLanguagesTranslation(printOutput:Boolean=false) {
+    /** Ensure _all_ languages are loaded, used by [TranslationFileWriter] and `TranslationTests` */
+    fun readAllLanguagesTranslation() {
         // Apparently you can't iterate over the files in a directory when running out of a .jar...
         // https://www.badlogicgames.com/forum/viewtopic.php?f=11&t=27250
         // which means we need to list everything manually =/
@@ -160,11 +173,10 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
         val translationStart = System.currentTimeMillis()
 
         for (language in getLanguagesWithTranslationFile()) {
-            tryReadTranslationForLanguage(language, printOutput)
+            tryReadTranslationForLanguage(language)
         }
 
-        val translationFilesTime = System.currentTimeMillis() - translationStart
-        if(printOutput) println("Loading translation files - "+translationFilesTime+"ms")
+        debug("Loading translation files - %sms", System.currentTimeMillis() - translationStart)
     }
 
     fun loadPercentageCompleteOfLanguages(){
@@ -172,24 +184,38 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
 
         percentCompleteOfLanguages = TranslationFileReader.readLanguagePercentages()
 
-        val translationFilesTime = System.currentTimeMillis() - startTime
-        println("Loading percent complete of languages - "+translationFilesTime+"ms")
+        debug("Loading percent complete of languages - %sms", System.currentTimeMillis() - startTime)
+    }
+
+    fun getConditionalOrder(language: String): String {
+        return getText(englishConditionalOrderingString, language, null)
+    }
+
+    fun placeConditionalsAfterUnique(language: String): Boolean {
+        if (get(conditionalUniqueOrderString, language, null)?.get(language) == "before")
+            return false
+        return true
+    }
+
+    /** Returns the equivalent of a space in the given language
+     * Defaults to a space if no translation is provided
+     */
+    fun getSpaceEquivalent(language: String): String {
+        val translation = getText("\" \"", language, null)
+        return translation.substring(1, translation.length-1)
+    }
+
+    fun shouldCapitalize(language: String): Boolean {
+        return get(shouldCapitalizeString, language, null)?.get(language)?.toBoolean() ?: true
     }
 
     companion object {
-        // Regex compilation is expensive, best to save it
-        val bonusOrPenaltyRegex = Regex("""(Bonus|Penalty) vs (.*) (\d*)%""")
-        fun translateBonusOrPenalty(unique: String): String {
-            val regexResult = bonusOrPenaltyRegex.matchEntire(unique)
-            if (regexResult == null) return unique.tr()
-            else {
-                var separatorCharacter = " "
-                if (UncivGame.Current.settings.language == "Simplified_Chinese") separatorCharacter = ""
-                val start = regexResult.groups[1]!!.value + " vs [" + regexResult.groups[2]!!.value + "]"
-                val translatedUnique = start.tr() + separatorCharacter + regexResult.groups[3]!!.value + "%"
-                return translatedUnique
-            }
-        }
+        // Whenever this string is changed, it should also be changed in the translation files!
+        // It is mostly used as the template for translating the order of conditionals
+        const val englishConditionalOrderingString =
+            "<with a garrison> <for [mapUnitFilter] units> <above [amount] HP> <below [amount] HP> <vs cities> <vs [mapUnitFilter] units> <when fighting in [tileFilter] tiles> <when attacking> <when defending> <if this city has at least [amount] specialists> <when at war> <when not at war> <while the empire is happy> <during a Golden Age> <during the [era]> <before the [era]> <starting from the [era]> <with [techOrPolicy]> <without [techOrPolicy]>"
+        const val conditionalUniqueOrderString = "ConditionalsPlacement"
+        const val shouldCapitalizeString = "StartWithCapitalLetter"
     }
 }
 
@@ -202,13 +228,52 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
 // The group may contain any number of any character except ] - pattern [^]]
 val squareBraceRegex = Regex("""\[([^]]*)\]""")
 
-// Just look for either [ or ]
-val eitherSquareBraceRegex = Regex("""\[|\]""")
-
 // Analogous as above: Expect a {} pair with any chars but } in between and capture that
 val curlyBraceRegex = Regex("""\{([^}]*)\}""")
 
-/**
+// Analogous as above: Expect a <> pair with any chars but > in between and capture that
+val pointyBraceRegex = Regex("""\<([^>]*)\>""")
+
+
+object TranslationActiveModsCache {
+    private var cachedHash = Int.MIN_VALUE
+
+    var activeMods: HashSet<String> = hashSetOf()
+        get() {
+            val hash = getCurrentHash()
+            if (hash != cachedHash) {
+                cachedHash = hash
+                field = getCurrentSet()
+            }
+            return field
+        }
+        private set
+
+    private fun getCurrentHash(): Int {
+        val gameInfo = UncivGame.Current.gameInfo
+        return if (gameInfo != null) {
+            gameInfo.gameParameters.mods.hashCode() + gameInfo.gameParameters.baseRuleset.hashCode() * 31
+        } else {
+            UncivGame.Current.translations.translationActiveMods.hashCode() * 31 * 31
+        }
+    }
+
+    private fun getCurrentSet(): LinkedHashSet<String> {
+        val gameInfo = UncivGame.Current.gameInfo
+        return if (gameInfo != null) {
+            val par = gameInfo.gameParameters
+            // This is equivalent to (par.mods + par.baseRuleset) without the cast down to `Set`
+            LinkedHashSet<String>(par.mods.size + 1).apply {
+                addAll(par.mods)
+                add(par.baseRuleset)
+            }
+        } else {
+            UncivGame.Current.translations.translationActiveMods
+        }
+    }
+}
+
+    /**
  *  This function does the actual translation work,
  *      using an instance of [Translations] stored in UncivGame.Current
  *
@@ -217,16 +282,82 @@ val curlyBraceRegex = Regex("""\{([^}]*)\}""")
  *                  placeholders - contains at least one '[' - see below
  *                  sentences - contains at least one '{'
  *                  - phrases between curly braces are translated individually
+ *                  Additionally, they may contain conditionals between '<' and '>'
  *  @return     The translated string
  *                  defaults to the input string if no translation is available,
  *                  but with placeholder or sentence brackets removed.
  */
 fun String.tr(): String {
-    val activeMods = if (UncivGame.Current.isGameInfoInitialized())
-        UncivGame.Current.gameInfo.gameParameters.mods else null
+    val language = UncivGame.Current.settings.language
+
+    if (contains('<') && contains('>')) { // Conditionals!
+        /**
+         * So conditionals can contain placeholders, such as <vs [unitFilter] units>, which themselves
+         * can contain multiple filters, such as <vs [{Military} {Water}] units>.
+         * Moreover, we can have any amount of conditionals in any order, and translations
+         * can reorder these conditionals in any way they like, even putting them in front
+         * of the rest of the translatable string.
+         * All of this nesting makes it quite difficult to translate, and is the reason we check
+         * for these first.
+         *
+         * The plan: First translate each of the conditionals on its own, and then combine them
+         * together into the final fully translated string.
+         */
+
+        var translatedBaseUnique = this.removeConditionals().tr()
+
+        val conditionals = this.getConditionals().map { it.placeholderText }
+        val conditionsWithTranslation: HashMap<String, String> = hashMapOf()
+
+        for (conditional in this.getConditionals())
+            conditionsWithTranslation[conditional.placeholderText] = conditional.text.tr()
+
+        val translatedConditionals: MutableList<String> = mutableListOf()
+
+        // Somewhere, we asked the translators to reorder all possible conditionals in a way that
+        // makes sense in their language. We get this ordering, and than extract each of the
+        // translated conditionals, removing the <> surrounding them, and removing param values
+        // where it exists.
+        val conditionalOrdering = UncivGame.Current.translations.getConditionalOrder(language)
+        for (placedConditional in pointyBraceRegex.findAll(conditionalOrdering)
+            .map { it.value.substring(1, it.value.length - 1).getPlaceholderText() }) {
+            if (placedConditional in conditionals) {
+                translatedConditionals.add(conditionsWithTranslation[placedConditional]!!)
+                conditionsWithTranslation.remove(placedConditional)
+            }
+        }
+
+        // If the translated string that should contain all conditionals doesn't contain
+        // a few conditionals used here, just add the translations of these to the end.
+        // We do test for this, but just in case.
+        translatedConditionals.addAll(conditionsWithTranslation.values)
+
+        // After that, add the translation of the base unique either before or after these conditionals
+        if (UncivGame.Current.translations.placeConditionalsAfterUnique(language)) {
+            translatedConditionals.add(0, translatedBaseUnique)
+        } else {
+            if (UncivGame.Current.translations.shouldCapitalize(language) && translatedBaseUnique[0].isUpperCase())
+                translatedBaseUnique = translatedBaseUnique.replaceFirstChar { it.lowercase() }
+            translatedConditionals.add(translatedBaseUnique)
+        }
+
+        var fullyTranslatedString = translatedConditionals.joinToString(
+            UncivGame.Current.translations.getSpaceEquivalent(language)
+        )
+        if (UncivGame.Current.translations.shouldCapitalize(language))
+            fullyTranslatedString = fullyTranslatedString.replaceFirstChar { it.uppercase() }
+        return fullyTranslatedString
+    }
+
+    // curly and square brackets can be nested inside of each other so find the leftmost curly/square
+    // bracket then process that first
+    val indexSquare = this.indexOf('[')
+    val indexCurly = this.indexOf('{')
+    val processSquare = indexSquare >= 0 && (indexCurly < 0 || indexSquare < indexCurly)
+    val processCurly =  indexCurly >= 0 && (indexSquare < 0 || indexCurly < indexSquare)
 
     // There might still be optimization potential here!
-    if (contains("[")) { // Placeholders!
+    if (processSquare) { // Placeholders!
         /**
          * I'm SURE there's an easier way to do this but I can't think of it =\
          * So what's all this then?
@@ -244,45 +375,95 @@ fun String.tr(): String {
         val translationStringWithSquareBracketsOnly = this.getPlaceholderText()
         // That is now the key into the translation HashMap!
         val translationEntry = UncivGame.Current.translations
-                .get(translationStringWithSquareBracketsOnly, UncivGame.Current.settings.language, activeMods)
+            .get(translationStringWithSquareBracketsOnly, language, TranslationActiveModsCache.activeMods)
 
-        if (translationEntry == null ||
-                !translationEntry.containsKey(UncivGame.Current.settings.language)) {
+        var languageSpecificPlaceholder: String
+        val originalEntry: String
+        if (translationEntry == null || !translationEntry.containsKey(language)) {
             // Translation placeholder doesn't exist for this language, default to English
-            return this.replace(eitherSquareBraceRegex, "")
+            languageSpecificPlaceholder = this
+            originalEntry = this
+        } else {
+            languageSpecificPlaceholder = translationEntry[language]!!
+            originalEntry = translationEntry.entry
         }
 
         // Take the terms in the message, WITHOUT square brackets
-        val termsInMessage = this.getPlaceholderParameters()
-        // Take the term from the placeholder, INCLUDING the square brackets
-        val termsInTranslationPlaceholder = squareBraceRegex.findAll(translationEntry.entry).map { it.value }.toList()
+        val termsInMessage = this.getPlaceholderParametersIgnoringLowerLevelBraces()
+        // Take the terms from the placeholder
+        val termsInTranslationPlaceholder = originalEntry.getPlaceholderParametersIgnoringLowerLevelBraces()
         if (termsInMessage.size != termsInTranslationPlaceholder.size)
             throw Exception("Message $this has a different number of terms than the placeholder $translationEntry!")
 
-        var languageSpecificPlaceholder = translationEntry[UncivGame.Current.settings.language]!!
         for (i in termsInMessage.indices) {
-            languageSpecificPlaceholder = languageSpecificPlaceholder.replace(termsInTranslationPlaceholder[i], termsInMessage[i].tr())
+            languageSpecificPlaceholder = languageSpecificPlaceholder.replace(
+                "[${termsInTranslationPlaceholder[i]}]", // re-add square brackets to placeholder terms
+                termsInMessage[i].tr()
+            )
         }
         return languageSpecificPlaceholder      // every component is already translated
     }
 
-    if (contains("{")) { // sentence
+    if (processCurly) { // Translating partial sentences
         return curlyBraceRegex.replace(this) { it.groups[1]!!.value.tr() }
     }
 
     if (Stats.isStats(this)) return Stats.parse(this).toString()
 
-    return UncivGame.Current.translations.getText(this, UncivGame.Current.settings.language, activeMods)
+    val translation = UncivGame.Current.translations.getText(this, language, TranslationActiveModsCache.activeMods)
+
+    val stat = Stat.safeValueOf(this)
+    if (stat != null) return stat.character + translation
+
+    return translation
 }
 
-fun String.getPlaceholderText() = this.replace(squareBraceRegex, "[]")
+
+/**
+ * Finds the parameters in a string while IGNORING the lower-leveled braces.
+ * For example, a string like 'The city of [New [York]]' will return ['New [York]'],
+ * allowing us to have nested translations!
+ */
+fun String.getPlaceholderParametersIgnoringLowerLevelBraces(): List<String> {
+    if (!this.contains('[')) return emptyList()
+    val parameters = ArrayList<String>()
+    var depthOfBraces = 0
+    var startOfCurrentParameter = -1
+    for (i in this.indices) {
+        if (this[i] == '[') {
+            if (depthOfBraces == 0) startOfCurrentParameter = i+1
+            depthOfBraces++
+        }
+        if (this[i] == ']' && depthOfBraces > 0) {
+            depthOfBraces--
+            if (depthOfBraces == 0) parameters.add(substring(startOfCurrentParameter,i))
+        }
+    }
+    return parameters
+}
+
+fun String.getPlaceholderText(): String {
+    var stringToReturn = this.removeConditionals()
+    val placeholderParameters = stringToReturn.getPlaceholderParametersIgnoringLowerLevelBraces()
+    for (placeholderParameter in placeholderParameters)
+        stringToReturn = stringToReturn.replace("[$placeholderParameter]", "[]")
+    return stringToReturn
+}
 
 fun String.equalsPlaceholderText(str:String): Boolean {
     if (first() != str.first()) return false // for quick negative return 95% of the time
-    return  this.getPlaceholderText() == str
+    return this.getPlaceholderText() == str
 }
 
-fun String.getPlaceholderParameters() = squareBraceRegex.findAll(this).map { it.groups[1]!!.value }.toList()
+fun String.hasPlaceholderParameters(): Boolean {
+    if (!this.contains('[')) return false
+    return squareBraceRegex.containsMatchIn(this.removeConditionals())
+}
+
+fun String.getPlaceholderParameters(): List<String> {
+    if (!this.contains('[')) return emptyList()
+    return squareBraceRegex.findAll(this.removeConditionals()).map { it.groups[1]!!.value }.toList()
+}
 
 /** Substitutes placeholders with [strings], respecting order of appearance. */
 fun String.fillPlaceholders(vararg strings: String): String {
@@ -290,8 +471,27 @@ fun String.fillPlaceholders(vararg strings: String): String {
     if (keys.size > strings.size)
         throw Exception("String $this has a different number of placeholders ${keys.joinToString()} (${keys.size}) than the substitutive strings ${strings.joinToString()} (${strings.size})!")
 
-    var filledString = this
+    var filledString = this.replace(squareBraceRegex, "[]")
     for (i in keys.indices)
-        filledString = filledString.replaceFirst(keys[i], strings[i])
+        filledString = filledString.replaceFirst("[]", "[${strings[i]}]")
     return filledString
+}
+
+fun String.getConditionals(): List<Unique> {
+    if (!this.contains('<')) return emptyList()
+    return pointyBraceRegex.findAll(this).map { Unique(it.groups[1]!!.value) }.toList()
+}
+
+fun String.removeConditionals(): String {
+    if (!this.contains('<')) return this // no need to regex search
+    return this
+        .replace(pointyBraceRegex, "")
+        // So, this is a quick hack, but it works as long as nobody uses word separators different from " " (space) and "" (none),
+        // And no translations start or end with a space.
+        // According to https://linguistics.stackexchange.com/questions/6131/is-there-a-long-list-of-languages-whose-writing-systems-dont-use-spaces
+        // This is a reasonable but not fully correct assumption to make.
+        // By doing it like this, we exclude languages such as Tibetan, Dzongkha (Bhutan), and Ethiopian.
+        // If we ever start getting translations for these, we'll work something out then.
+        .replace("  ", " ")
+        .trim()
 }

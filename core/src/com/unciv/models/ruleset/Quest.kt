@@ -11,6 +11,15 @@ enum class QuestName(val value: String) {
     ConquerCityState("Conquer City State"),
     FindPlayer("Find Player"),
     FindNaturalWonder("Find Natural Wonder"),
+    GiveGold("Give Gold"),
+    PledgeToProtect("Pledge to Protect"),
+    ContestCulture("Contest Culture"),
+    ContestFaith("Contest Faith"),
+    ContestTech("Contest Technologies"),
+    Invest("Invest"),
+    BullyCityState("Bully City State"),
+    DenounceCiv("Denounce Civilization"),
+    SpreadReligion("Spread Religion"),
     None("")
 }
 
@@ -25,20 +34,20 @@ class Quest : INamed {
     /** Unique identifier name of the quest, it is also shown */
     override var name: String = ""
 
-    /** Descrption of the quest shown to players */
+    /** Description of the quest shown to players */
     var description: String = ""
 
     /** [QuestType]: it is either Individual or Global */
     var type: QuestType = QuestType.Individual
 
     /** Influence reward gained on quest completion */
-    var influece: Float = 40f
+    var influence: Float = 40f
 
     /** Maximum number of turns to complete the quest, 0 if there's no turn limit */
     var duration: Int = 0
 
-    /**Minimum number of [CivInfo] needed to start the quest. It is meaningful only for [QuestType.Global]
-     * quests [type]. */
+    /** Minimum number of [CivInfo] needed to start the quest. It is meaningful only for [QuestType.Global]
+     *  quests [type]. */
     var minimumCivs: Int = 1
 
     /** Checks if [this] is a Global quest */

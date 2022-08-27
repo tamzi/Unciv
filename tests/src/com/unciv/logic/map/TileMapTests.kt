@@ -22,7 +22,7 @@ class TileMapTests {
     @Before
     fun initTheWorld() {
         RulesetCache.loadRulesets()
-        ruleSet = RulesetCache.getBaseRuleset()
+        ruleSet = RulesetCache.getVanillaRuleset()
         map = TileMap()
 
         tile1.position = Vector2(0f, 0f)
@@ -87,8 +87,8 @@ class TileMapTests {
         tile1.baseTerrain = Constants.hill
         tile1.setTerrainTransients()
         tile2.baseTerrain = Constants.grassland
-        tile2.terrainFeature = Constants.forest
         tile2.setTerrainTransients()
+        tile2.setTerrainFeatures(listOf(Constants.forest))
         tile3.baseTerrain = Constants.coast
         tile3.setTerrainTransients()
 
@@ -114,8 +114,8 @@ class TileMapTests {
     @Test
     fun canSeeMountainFromForestOverHills() {
         tile1.baseTerrain = Constants.grassland
-        tile1.terrainFeature = Constants.forest
         tile1.setTerrainTransients()
+        tile1.setTerrainFeatures(listOf(Constants.forest))
         tile2.baseTerrain = Constants.hill
         tile2.setTerrainTransients()
         tile3.baseTerrain = Constants.mountain
@@ -131,7 +131,7 @@ class TileMapTests {
         tile1.baseTerrain = Constants.hill
         tile1.setTerrainTransients()
         tile2.baseTerrain = Constants.grassland
-        tile2.terrainFeature = Constants.forest
+        tile1.setTerrainFeatures(listOf(Constants.forest))
         tile2.setTerrainTransients()
         tile3.baseTerrain = Constants.hill
         tile3.setTerrainTransients()
@@ -172,11 +172,11 @@ class TileMapTests {
     @Test
     fun canNOTSeeOutThroughForest() {
         tile1.baseTerrain = Constants.grassland
-        tile1.terrainFeature = Constants.forest
         tile1.setTerrainTransients()
+        tile1.setTerrainFeatures(listOf(Constants.forest))
         tile2.baseTerrain = Constants.grassland
-        tile2.terrainFeature = Constants.forest
         tile2.setTerrainTransients()
+        tile2.setTerrainFeatures(listOf(Constants.forest))
         tile3.baseTerrain = Constants.grassland
         tile3.setTerrainTransients()
 
@@ -190,8 +190,8 @@ class TileMapTests {
         tile1.baseTerrain = Constants.coast
         tile1.setTerrainTransients()
         tile2.baseTerrain = Constants.grassland
-        tile2.terrainFeature = Constants.jungle
         tile2.setTerrainTransients()
+        tile2.setTerrainFeatures(listOf(Constants.forest))
         tile3.baseTerrain = Constants.coast
         tile3.setTerrainTransients()
 

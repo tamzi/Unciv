@@ -2,19 +2,18 @@
 package com.unciv.testing
 
 import com.badlogic.gdx.Gdx
-import com.unciv.models.UnitActionType
+import com.unciv.UncivGame
+import com.unciv.models.metadata.GameSettings
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
-import com.unciv.models.translations.TranslationFileWriter
-import com.unciv.models.translations.Translations
-import com.unciv.models.translations.squareBraceRegex
+import com.unciv.models.translations.*
+import com.unciv.utils.debug
 import org.junit.Assert
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.OutputStream
 import java.io.PrintStream
-import java.util.*
 
 @RunWith(GdxTestRunner::class)
 class TranslationTests {
@@ -24,18 +23,15 @@ class TranslationTests {
     @Before
     fun loadTranslations() {
         // Since the ruleset and translation loader have their own output,
-        // We 'disable' the output stream for their outputs, and only enable it for the twst itself.
+        // We 'disable' the output stream for their outputs, and only enable it for the test itself.
         val outputChannel = System.out
         System.setOut(PrintStream(object : OutputStream() {
             override fun write(b: Int) {}
         }))
-//        System.setOut(TextWriter.Null)
-//        Console(). //(TextWriter.Null);
         translations.readAllLanguagesTranslation()
         RulesetCache.loadRulesets()
-        ruleset = RulesetCache.getBaseRuleset()
+        ruleset = RulesetCache.getVanillaRuleset()
         System.setOut(outputChannel)
-//        Console.SetOut()
     }
 
     @Test
@@ -44,31 +40,37 @@ class TranslationTests {
                 translations.size > 0)
     }
 
-    @Test
-    fun allUnitActionsHaveTranslation() {
-        val actions: MutableSet<String> = HashSet()
-        for (action in UnitActionType.values()) {
-            if (action == UnitActionType.Upgrade)
-                actions.add("Upgrade to [unitType] ([goldCost] gold)")
-            else
-                actions.add(action.value)
-        }
-        val allUnitActionsHaveTranslation = allStringAreTranslated(actions)
-        Assert.assertTrue("This test will only pass when there is a translation for all unit actions",
-                allUnitActionsHaveTranslation)
-    }
 
-    private fun allStringAreTranslated(strings: Set<String>): Boolean {
-        var allStringsHaveTranslation = true
-        for (entry in strings) {
-            val key = if (entry.contains('[')) entry.replace(squareBraceRegex, "[]") else entry
-            if (!translations.containsKey(key)) {
-                allStringsHaveTranslation = false
-                println(entry)
-            }
-        }
-        return allStringsHaveTranslation
-    }
+    // This test is incorrectly defined: it should read from the template.properties file and not fro the final translation files.
+//    @Test
+//    fun allUnitActionsHaveTranslation() {
+//        val actions: MutableSet<String> = HashSet()
+//        for (action in UnitActionType.values()) {
+//            actions.add(
+//                when(action) {
+//                    UnitActionType.Upgrade -> "Upgrade to [unitType] ([goldCost] gold)"
+//                    UnitActionType.Create -> "Create [improvement]"
+//                    UnitActionType.SpreadReligion -> "Spread [religionName]"
+//                    else -> action.value
+//                }
+//            )
+//        }
+//        val allUnitActionsHaveTranslation = allStringAreTranslated(actions)
+//        Assert.assertTrue("This test will only pass when there is a translation for all unit actions",
+//                allUnitActionsHaveTranslation)
+//    }
+//
+//    private fun allStringAreTranslated(strings: Set<String>): Boolean {
+//        var allStringsHaveTranslation = true
+//        for (entry in strings) {
+//            val key = if (entry.contains('[')) entry.replace(squareBraceRegex, "[]") else entry
+//            if (!translations.containsKey(key)) {
+//                allStringsHaveTranslation = false
+//                println("$entry not translated!")
+//            }
+//        }
+//        return allStringsHaveTranslation
+//    }
 
     @Test
     fun translationsFromJSONsCanBeGenerated() {
@@ -109,7 +111,7 @@ class TranslationTests {
     fun allPlaceholderKeysMatchEntry() {
         var allPlaceholderKeysMatchEntry = true
         for (key in translations.keys) {
-            if (!key.contains('[')) continue
+            if (!key.contains('[') || key.contains('<')) continue
             val translationEntry = translations[key]!!.entry
             val keyFromEntry = translationEntry.replace(squareBraceRegex, "[]")
             if (key != keyFromEntry) {
@@ -122,6 +124,28 @@ class TranslationTests {
                 "This test will only pass when all placeholder translations'keys match their entry with shortened placeholders",
                 allPlaceholderKeysMatchEntry
         )
+    }
+
+    @Test
+    fun allTranslationsHaveUniquePlaceholders() {
+        // check that the templates have unique placeholders (the translation entries are checked below)
+        val templateLines = Gdx.files.internal(TranslationFileWriter.templateFileLocation).reader().readLines()
+        var noTwoPlaceholdersAreTheSame = true
+        for (template in templateLines) {
+            if (template.startsWith("#")) continue
+            val placeholders = squareBraceRegex.findAll(template)
+                .map { it.value }.toList()
+
+            for (placeholder in placeholders)
+                if (placeholders.count { it == placeholder } > 1) {
+                    noTwoPlaceholdersAreTheSame = false
+                    println("Template key $template has the parameter $placeholder more than once")
+                    break
+                }
+        }
+        Assert.assertTrue(
+            "This test will only pass when no translation template keys have the same parameter twice",
+            noTwoPlaceholdersAreTheSame)
     }
 
     @Test
@@ -156,4 +180,128 @@ class TranslationTests {
         }
         Assert.assertFalse(failed)
     }
+
+
+    @Test
+    fun allStringsTranslate() {
+        // Needed for .tr() to work
+        UncivGame.Current = UncivGame()
+        UncivGame.Current.settings = GameSettings()
+
+        for ((key, value) in translations)
+            UncivGame.Current.translations[key] = value
+
+        var allWordsTranslatedCorrectly = true
+        for (translationEntry in translations.values) {
+            for ((language, _) in translationEntry) {
+                UncivGame.Current.settings.language = language
+                try {
+                    translationEntry.entry.tr()
+                } catch (ex: Exception) {
+                    allWordsTranslatedCorrectly = false
+                    println("Crashed when translating ${translationEntry.entry} to $language")
+                }
+            }
+        }
+        Assert.assertTrue(
+            "This test will only pass when all phrases properly translate to their language",
+            allWordsTranslatedCorrectly
+        )
+    }
+
+    @Test
+    fun wordBoundaryTranslationIsFormattedCorrectly() {
+        val translationEntry = translations["\" \""]!!
+
+        var allTranslationsCheckedOut = true
+        for ((language, translation) in translationEntry) {
+            if (!translation.startsWith("\"")
+                || !translation.endsWith("\"")
+                || translation.count { it == '\"' } != 2
+            ) {
+                allTranslationsCheckedOut = false
+                println("Translation of the word boundary in $language was incorrectly formatted")
+            }
+        }
+
+        Assert.assertTrue(
+            "This test will only pass when the word boundrary translation succeeds",
+            allTranslationsCheckedOut
+        )
+    }
+
+
+    @Test
+    fun translationParameterExtractionForNestedBracesWorks() {
+        Assert.assertEquals(listOf("New [York]"),
+            "The city of [New [York]]".getPlaceholderParametersIgnoringLowerLevelBraces())
+
+        // Closing braces without a matching opening brace - 'level 0' - are ignored
+        Assert.assertEquals(listOf("New [York]"),
+            "The city of [New [York]]]".getPlaceholderParametersIgnoringLowerLevelBraces())
+
+        // Opening braces without a matching closing brace mean that the term is never 'closed'
+        // so there are no parameters
+        Assert.assertEquals(listOf<String>(),
+            "The city of [[New [York]".getPlaceholderParametersIgnoringLowerLevelBraces())
+
+        // Supernesting
+        val superNestedString = "The brother of [[my [best friend]] and [[America]'s greatest [Dad]]]"
+        Assert.assertEquals(listOf("[my [best friend]] and [[America]'s greatest [Dad]]"),
+                superNestedString.getPlaceholderParametersIgnoringLowerLevelBraces())
+        Assert.assertEquals(listOf("my [best friend]", "[America]'s greatest [Dad]"),
+        superNestedString.getPlaceholderParametersIgnoringLowerLevelBraces()[0]
+            .getPlaceholderParametersIgnoringLowerLevelBraces())
+
+        UncivGame.Current = UncivGame()
+        UncivGame.Current.settings = GameSettings()
+
+        fun addTranslation(original:String, result:String){
+            UncivGame.Current.translations[original.getPlaceholderText()] =TranslationEntry(original)
+                .apply { this["English"] = result }
+        }
+        addTranslation("The brother of [person]", "The sibling of [person]")
+        Assert.assertEquals("The sibling of bob", "The brother of [bob]".tr())
+
+
+        addTranslation("[a] and [b]", "[a] and indeed [b]")
+        addTranslation("my [whatever]", "mine own [whatever]")
+        addTranslation("[place]'s greatest [job]", "the greatest [job] in [place]")
+        addTranslation("Dad", "Father")
+        addTranslation("best friend", "closest ally")
+        addTranslation("America", "The old British colonies")
+
+        debug("[Dad] and [my [best friend]]".getPlaceholderText())
+        Assert.assertEquals(listOf("Dad","my [best friend]"),
+            "[Dad] and [my [best friend]]".getPlaceholderParametersIgnoringLowerLevelBraces())
+        Assert.assertEquals("Father and indeed mine own closest ally", "[Dad] and [my [best friend]]".tr())
+
+        // Reminder: "The brother of [[my [best friend]] and [[America]'s greatest [Dad]]]"
+        Assert.assertEquals("The sibling of mine own closest ally and indeed the greatest Father in The old British colonies",
+            superNestedString.tr())
+    }
+
+
+//    @Test
+//    fun allConditionalsAreContainedInConditionalOrderTranslation() {
+//        val orderedConditionals = Translations.englishConditionalOrderingString
+//        val orderedConditionalsSet = orderedConditionals.getConditionals().map { it.placeholderText }
+//        val translationEntry = translations[orderedConditionals]!!
+//
+//        var allTranslationsCheckedOut = true
+//        for ((language, translation) in translationEntry) {
+//            val translationConditionals = translation.getConditionals().map { it.placeholderText }
+//            if (translationConditionals.toHashSet() != orderedConditionalsSet.toHashSet()
+//                || translationConditionals.count() != translationConditionals.distinct().count()
+//            ) {
+//                allTranslationsCheckedOut = false
+//                println("Not all or double parameters found in the conditional ordering for $language")
+//            }
+//        }
+//
+//        Assert.assertTrue(
+//            "This test will only pass when each of the conditionals exists exactly once in the translations for the conditional ordering",
+//            allTranslationsCheckedOut
+//        )
+//    }
 }

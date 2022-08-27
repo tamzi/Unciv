@@ -1,77 +1,60 @@
 package com.unciv.ui.pickerscreens
 
-import com.unciv.ui.utils.AutoScrollPane as ScrollPane
-import com.badlogic.gdx.scenes.scene2d.ui.*
-import com.unciv.Constants
-import com.unciv.UncivGame
-import com.unciv.models.translations.tr
-import com.unciv.ui.utils.*
+import com.unciv.ui.utils.BaseScreen
+import com.unciv.ui.utils.KeyCharAndCode
+import com.unciv.ui.utils.extensions.keyShortcuts
+import com.unciv.ui.utils.extensions.onActivation
 
-open class PickerScreen : CameraStageBaseScreen() {
+open class PickerScreen(disableScroll: Boolean = false) : BaseScreen() {
 
-    internal var closeButton: TextButton = Constants.close.toTextButton()
-    protected var descriptionLabel: Label
-    protected var rightSideGroup = VerticalGroup()
-    protected var rightSideButton: TextButton
-    private var screenSplit = 0.85f
+    val pickerPane = PickerPane(disableScroll = disableScroll)
 
-    /**
-     * The table displaying the choices from which to pick (usually).
-     * Also the element which most of the screen realestate is devoted to displaying.
-     */
-    protected var topTable: Table
-    var bottomTable:Table = Table()
-    internal var splitPane: SplitPane
-    protected var scrollPane: ScrollPane
+    /** @see PickerPane.closeButton */
+    val closeButton by pickerPane::closeButton
+    /** @see PickerPane.descriptionLabel */
+    val descriptionLabel by pickerPane::descriptionLabel
+    /** @see PickerPane.rightSideGroup */
+    val rightSideGroup by pickerPane::rightSideGroup
+    /** @see PickerPane.rightSideButton */
+    val rightSideButton by pickerPane::rightSideButton
+
+    /** @see PickerPane.topTable */
+    val topTable by pickerPane::topTable
+    /** @see PickerPane.scrollPane */
+    val scrollPane by pickerPane::scrollPane
+    /** @see PickerPane.splitPane */
+    val splitPane by pickerPane::splitPane
 
     init {
-        bottomTable.add(closeButton).pad(10f)
-
-        descriptionLabel = "".toLabel()
-        descriptionLabel.wrap = true
-        val labelScroll = ScrollPane(descriptionLabel,skin)
-        bottomTable.add(labelScroll).pad(5f).fill().expand()
-
-        rightSideButton = "".toTextButton()
-        rightSideButton.disable()
-        rightSideGroup.addActor(rightSideButton)
-
-        bottomTable.add(rightSideGroup).pad(10f).right()
-        bottomTable.height = stage.height * (1 - screenSplit)
-
-        topTable = Table()
-        scrollPane = ScrollPane(topTable)
-
-        scrollPane.setSize(stage.width, stage.height * screenSplit)
-
-        splitPane = SplitPane(scrollPane, bottomTable, true, skin)
-        splitPane.splitAmount = screenSplit
-        splitPane.setFillParent(true)
-        stage.addActor(splitPane)
+        pickerPane.setFillParent(true)
+        stage.addActor(pickerPane)
+        ensureLayout()
     }
 
-    fun setDefaultCloseAction(previousScreen: CameraStageBaseScreen?=null) {
-        val closeAction = {
-            if (previousScreen != null) game.setScreen(previousScreen)
-            else game.setWorldScreen()
-            dispose()
+    /** Make sure that anyone relying on sizes of the tables within this class during construction gets correct size readings.
+     * (see [com.unciv.ui.pickerscreens.PolicyPickerScreen]) */
+    private fun ensureLayout() {
+        pickerPane.validate()
+    }
+
+    /**
+     * Initializes the [Close button][closeButton]'s action (and the Back/ESC handler)
+     * to return to the [previousScreen] if specified, or else to the world screen.
+     */
+    fun setDefaultCloseAction() {
+        pickerPane.closeButton.onActivation {
+            game.popScreen()
         }
-        closeButton.onClick(closeAction)
-        onBackButtonClicked(closeAction)
+        pickerPane.closeButton.keyShortcuts.add(KeyCharAndCode.BACK)
     }
 
-    fun setRightSideButtonEnabled(bool: Boolean) {
-        if (bool) rightSideButton.enable()
-        else rightSideButton.disable()
+    /** Enables the [rightSideButton]. See [pick] for a way to set the text. */
+    fun setRightSideButtonEnabled(enabled: Boolean) {
+        pickerPane.setRightSideButtonEnabled(enabled)
     }
 
-    protected fun pick(rightButtonText: String) {
-        if (UncivGame.Current.worldScreen.isPlayersTurn) rightSideButton.enable()
-        rightSideButton.setText(rightButtonText)
-    }
-
-    fun removeRightSideClickListeners(){
-        rightSideButton.listeners.filter { it != rightSideButton.clickListener }
-                .forEach { rightSideButton.removeListener(it) }
+    /** Sets the text of the [rightSideButton] and enables it if it's the player's turn */
+    fun pick(rightButtonText: String) {
+        pickerPane.pick(rightButtonText)
     }
 }

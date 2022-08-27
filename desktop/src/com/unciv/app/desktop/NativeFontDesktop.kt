@@ -1,20 +1,24 @@
 package com.unciv.app.desktop
 
 import com.badlogic.gdx.graphics.Pixmap
+import com.unciv.ui.utils.FontFamilyData
 import com.unciv.ui.utils.NativeFontImplementation
 import java.awt.*
 import java.awt.image.BufferedImage
+import java.util.*
 
-
-class NativeFontDesktop(val size: Int) : NativeFontImplementation {
+class NativeFontDesktop(private val size: Int, private val fontFamily: String) :
+    NativeFontImplementation {
     private val font by lazy {
-        Font("", Font.PLAIN, size)
+        Font(fontFamily, Font.PLAIN, size)
     }
     private val metric by lazy {
         val bi = BufferedImage(1, 1, BufferedImage.TYPE_4BYTE_ABGR)
         val g = bi.createGraphics()
         g.font = font
-        g.fontMetrics!!
+        val fontMetrics = g.fontMetrics
+        g.dispose()
+        fontMetrics
     }
 
     override fun getFontSize(): Int {
@@ -42,6 +46,15 @@ class NativeFontDesktop(val size: Int) : NativeFontImplementation {
                 pixmap.drawPixel(i, j)
             }
         }
+        g.dispose()
         return pixmap
+    }
+
+    override fun getAvailableFontFamilies(): Sequence<FontFamilyData> {
+        val cjkLanguage = " CJK " +System.getProperty("user.language").uppercase()
+        return GraphicsEnvironment.getLocalGraphicsEnvironment().allFonts.asSequence()
+            .filter { " CJK " !in it.fontName || cjkLanguage in it.fontName }
+            .map { FontFamilyData(it.family, it.getFamily(Locale.ROOT)) }
+            .distinctBy { it.invariantName }
     }
 }

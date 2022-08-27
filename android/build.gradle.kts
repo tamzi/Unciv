@@ -4,12 +4,10 @@ import java.util.*
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    id("kotlin-android-extensions")
 }
 
 android {
-    buildToolsVersion("29.0.2")
-    compileSdkVersion(29)
+    compileSdk = 32
     sourceSets {
         getByName("main").apply {
             manifest.srcFile("AndroidManifest.xml")
@@ -22,16 +20,18 @@ android {
         }
     }
     packagingOptions {
-        exclude("META-INF/robovm/ios/robovm.xml")
+        resources.excludes += "META-INF/robovm/ios/robovm.xml"
+        // part of kotlinx-coroutines-android, should not go into the apk
+        resources.excludes += "DebugProbesKt.bin"
     }
     defaultConfig {
         applicationId = "com.unciv.app"
-        minSdkVersion(14)
-        targetSdkVersion(29)
+        minSdk = 21
+        targetSdk = 32 // See #5044
         versionCode = BuildConfig.appCodeNumber
         versionName = BuildConfig.appVersion
 
-        base.archivesBaseName = "Unciv"
+        base.archivesName.set("Unciv")
     }
 
     // necessary for Android Work lib
@@ -53,18 +53,26 @@ android {
 
     buildTypes {
         getByName("release") {
+            // If you make this true you get a version of the game that just flat-out doesn't run
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
 
     }
-    aaptOptions {
+    lint {
+        disable += "MissingTranslation"   // see res/values/strings.xml
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+
+        isCoreLibraryDesugaringEnabled = true
+    }
+    androidResources {
         // Don't add local save files and fonts to release, obviously
         ignoreAssetsPattern = "!SaveFiles:!fonts:!maps:!music:!mods"
     }
-    lintOptions {
-        disable("MissingTranslation")
-    }
+    buildToolsVersion = "32.0.0"
 }
 
 
@@ -75,21 +83,11 @@ task("copyAndroidNatives") {
     val natives: Configuration by configurations
 
     doFirst {
-        file("libs/armeabi/").mkdirs()
-        file("libs/armeabi-v7a/").mkdirs()
-        file("libs/arm64-v8a/").mkdirs()
-        file("libs/x86_64/").mkdirs()
-        file("libs/x86/").mkdirs()
+        val rx = Regex(""".*natives-([^.]+)\.jar$""")
         natives.forEach { jar ->
-            val outputDir: File? = when {
-                jar.name.endsWith("natives-arm64-v8a.jar") -> file("libs/arm64-v8a")
-                jar.name.endsWith("natives-armeabi-v7a.jar") -> file("libs/armeabi-v7a")
-                jar.name.endsWith("natives-armeabi.jar") -> file("libs/armeabi")
-                jar.name.endsWith("natives-x86_64.jar") -> file("libs/x86_64")
-                jar.name.endsWith("natives-x86.jar") -> file("libs/x86")
-                else -> null
-            }
-            outputDir?.let {
+            if (rx.matches(jar.name)) {
+                val outputDir = file(rx.replace(jar.name) { "libs/" + it.groups[1]!!.value })
+                outputDir.mkdirs()
                 copy {
                     from(zipTree(jar))
                     into(outputDir)
@@ -101,7 +99,8 @@ task("copyAndroidNatives") {
 }
 
 tasks.whenTaskAdded {
-    if ("package" in name) {
+    // See https://github.com/yairm210/Unciv/issues/4842
+    if ("package" in name || "assemble" in name || "bundleRelease" in name) {
         dependsOn("copyAndroidNatives")
     }
 }
@@ -127,29 +126,14 @@ tasks.register<JavaExec>("run") {
 }
 
 dependencies {
-    implementation("androidx.core:core:1.2.0")
-    implementation("androidx.work:work-runtime-ktx:2.3.2")
-}
-
-// sets up the Android Eclipse project, using the old Ant based build.
-eclipse {
-    jdt {
-        sourceCompatibility = JavaVersion.VERSION_1_6
-        targetCompatibility = JavaVersion.VERSION_1_6
-    }
-
-    classpath {
-        plusConfigurations = plusConfigurations.apply { add(project.configurations.compile.get()) }
-        containers("com.android.ide.eclipse.adt.ANDROID_FRAMEWORK", "com.android.ide.eclipse.adt.LIBRARIES")
-    }
-
-    project {
-        name = "${BuildConfig.appName}-android"
-        natures("com.android.ide.eclipse.adt.AndroidNature")
-        buildCommands.clear()
-        buildCommand("com.android.ide.eclipse.adt.ResourceManagerBuilder")
-        buildCommand("com.android.ide.eclipse.adt.PreCompilerBuilder")
-        buildCommand("org.eclipse.jdt.core.javabuilder")
-        buildCommand("com.android.ide.eclipse.adt.ApkBuilder")
-    }
+    // Updating to latest version would require upgrading sourceCompatibility and targetCompatibility to 1_8, and targetSdk to 31 -
+    //   run `./gradlew build --scan` to see details
+    // Known Android Lint warning: "GradleDependency"
+    implementation("androidx.core:core-ktx:1.7.0")
+    implementation("androidx.work:work-runtime-ktx:2.7.1")
+    // Needed to convert e.g. Android 26 API calls to Android 21
+    // If you remove this run `./gradlew :android:lintDebug` to ensure everything's okay.
+    // If you want to upgrade this, check it's working by building an apk,
+    //   or by running `./gradlew :android:assembleRelease` which does that
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.1.5")
 }

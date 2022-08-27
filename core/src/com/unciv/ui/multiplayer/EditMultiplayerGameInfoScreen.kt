@@ -1,44 +1,61 @@
-package com.unciv.ui
+package com.unciv.ui.multiplayer
 
-import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.scenes.scene2d.ui.TextField
-import com.unciv.logic.GameInfo
-import com.unciv.logic.GameSaver
-import com.unciv.logic.civilization.PlayerType
+import com.badlogic.gdx.scenes.scene2d.ui.TextButton.TextButtonStyle
+import com.unciv.logic.multiplayer.OnlineMultiplayerGame
 import com.unciv.models.translations.tr
 import com.unciv.ui.pickerscreens.PickerScreen
-import com.unciv.ui.utils.*
-import com.unciv.ui.worldscreen.mainmenu.OnlineMultiplayer
-import kotlin.concurrent.thread
+import com.unciv.ui.popup.ConfirmPopup
+import com.unciv.ui.popup.Popup
+import com.unciv.ui.popup.ToastPopup
+import com.unciv.ui.saves.LoadGameScreen
+import com.unciv.ui.utils.UncivTextField
+import com.unciv.ui.utils.extensions.disable
+import com.unciv.ui.utils.extensions.enable
+import com.unciv.ui.utils.extensions.onClick
+import com.unciv.ui.utils.extensions.toLabel
+import com.unciv.ui.utils.extensions.toTextButton
+import com.unciv.utils.concurrency.Concurrency
+import com.unciv.utils.concurrency.launchOnGLThread
 
 /** Subscreen of MultiplayerScreen to edit and delete saves
-* backScreen is used for getting back to the MultiplayerScreen so it doesn't have to be created over and over again */
-class EditMultiplayerGameInfoScreen(game: GameInfo?, gameName: String, backScreen: MultiplayerScreen): PickerScreen(){
+ * backScreen is used for getting back to the MultiplayerScreen so it doesn't have to be created over and over again */
+class EditMultiplayerGameInfoScreen(val multiplayerGame: OnlineMultiplayerGame) : PickerScreen() {
     init {
-        val textField = TextField(gameName, skin)
+        val textField = UncivTextField.create("Game name", multiplayerGame.name)
 
         topTable.add("Rename".toLabel()).row()
-        topTable.add(textField).pad(10f).padBottom(30f).width(stage.width/2).row()
+        topTable.add(textField).pad(10f).padBottom(30f).width(stage.width / 2).row()
 
-        val deleteButton = "Delete save".toTextButton()
+        val negativeButtonStyle = skin.get("negative", TextButtonStyle::class.java)
+        val deleteButton = "Delete save".toTextButton(negativeButtonStyle)
         deleteButton.onClick {
-            val askPopup = YesNoPopup("Are you sure you want to delete this map?", {
-                backScreen.removeMultiplayerGame(game, gameName)
-                backScreen.game.setScreen(backScreen)
-                backScreen.reloadGameListUI()
-            }, this)
-            askPopup.open()
-        }.apply { color = Color.RED }
-
-        val giveUpButton = "Resign".toTextButton()
-        giveUpButton.onClick {
-            val askPopup = YesNoPopup("Are you sure you want to resign?", {
-                resign(game!!.gameId, gameName, backScreen)
-            }, this)
+            val askPopup = ConfirmPopup(
+                this,
+                "Are you sure you want to delete this save?",
+                "Delete save",
+            ) {
+                try {
+                    game.onlineMultiplayer.deleteGame(multiplayerGame)
+                    game.popScreen()
+                } catch (ex: Exception) {
+                    ToastPopup("Could not delete game!", this)
+                }
+            }
             askPopup.open()
         }
-        giveUpButton.apply { color = Color.RED }
+
+        val giveUpButton = "Resign".toTextButton(negativeButtonStyle)
+        giveUpButton.onClick {
+            val askPopup = ConfirmPopup(
+                this,
+                "Are you sure you want to resign?",
+                "Resign",
+            ) {
+                resign(multiplayerGame)
+            }
+            askPopup.open()
+        }
 
         topTable.add(deleteButton).pad(10f).row()
         topTable.add(giveUpButton)
@@ -46,7 +63,7 @@ class EditMultiplayerGameInfoScreen(game: GameInfo?, gameName: String, backScree
         //CloseButton Setup
         closeButton.setText("Back".tr())
         closeButton.onClick {
-            backScreen.game.setScreen(backScreen)
+            game.popScreen()
         }
 
         //RightSideButton Setup
@@ -54,15 +71,15 @@ class EditMultiplayerGameInfoScreen(game: GameInfo?, gameName: String, backScree
         rightSideButton.enable()
         rightSideButton.onClick {
             rightSideButton.setText("Saving...".tr())
-            //remove the old game file
-            backScreen.removeMultiplayerGame(game, gameName)
-            //using addMultiplayerGame will download the game from Dropbox so the descriptionLabel displays the right things
-            backScreen.addMultiplayerGame(game!!.gameId, textField.text)
-            backScreen.game.setScreen(backScreen)
-            backScreen.reloadGameListUI()
+            val newName = textField.text.trim()
+            game.onlineMultiplayer.changeGameName(multiplayerGame, newName)
+            val newScreen = game.popScreen()
+            if (newScreen is MultiplayerScreen) {
+                newScreen.selectGame(newName)
+            }
         }
 
-        if (game == null){
+        if (multiplayerGame.preview == null) {
             textField.isDisabled = true
             textField.color = Color.GRAY
             rightSideButton.disable()
@@ -74,57 +91,29 @@ class EditMultiplayerGameInfoScreen(game: GameInfo?, gameName: String, backScree
      * Helper function to decrease indentation
      * Turns the current playerCiv into an AI civ and uploads the game afterwards.
      */
-    private fun resign(gameId: String, gameName: String, backScreen: MultiplayerScreen){
+    private fun resign(multiplayerGame: OnlineMultiplayerGame) {
         //Create a popup
         val popup = Popup(this)
         popup.addGoodSizedLabel("Working...").row()
         popup.open()
 
-        thread {
+        Concurrency.runOnNonDaemonThreadPool("Resign") {
             try {
-                //download to work with newest game state
-                val gameInfo = OnlineMultiplayer().tryDownloadGame(gameId)
-                val playerCiv = gameInfo.currentPlayerCiv
-
-                //only give up if it's the users turn
-                //this ensures that no one can upload a newer game state while we try to give up
-                if (playerCiv.playerId == game.settings.userId) {
-                    //Set own civ info to AI
-                    playerCiv.playerType = PlayerType.AI
-                    playerCiv.playerId = ""
-
-                    //call next turn so turn gets simulated by AI
-                    gameInfo.nextTurn()
-
-                    //Add notification so everyone knows what happened
-                    //call for every civ cause AI players are skipped anyway
-                    for (civ in gameInfo.civilizations) {
-                        civ.addNotification("[${playerCiv.civName}] resigned and is now controlled by AI", Color.RED)
-                    }
-
-                    //save game so multiplayer list stays up to date
-                    GameSaver.saveGame(gameInfo, gameName, true)
-                    OnlineMultiplayer().tryUploadGame(gameInfo)
-                    Gdx.app.postRunnable {
+                val resignSuccess = game.onlineMultiplayer.resign(multiplayerGame)
+                if (resignSuccess) {
+                    launchOnGLThread {
                         popup.close()
-                        //go back to the MultiplayerScreen
-                        backScreen.game.setScreen(backScreen)
-                        backScreen.reloadGameListUI()
+                        game.popScreen()
                     }
                 } else {
-                    Gdx.app.postRunnable {
-                        //change popup text
-                        popup.innerTable.clear()
-                        popup.addGoodSizedLabel("You can only resign if it's your turn").row()
-                        popup.addCloseButton()
+                    launchOnGLThread {
+                        popup.reuseWith("You can only resign if it's your turn", true)
                     }
                 }
             } catch (ex: Exception) {
-                Gdx.app.postRunnable {
-                    //change popup text
-                    popup.innerTable.clear()
-                    popup.addGoodSizedLabel("Could not upload game!").row()
-                    popup.addCloseButton()
+                val (message) = LoadGameScreen.getLoadExceptionMessage(ex)
+                launchOnGLThread {
+                    popup.reuseWith(message, true)
                 }
             }
         }

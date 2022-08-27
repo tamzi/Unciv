@@ -1,41 +1,89 @@
 ﻿package com.unciv
 
-import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.Input
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.actions.Actions
-import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.utils.Align
 import com.unciv.logic.GameInfo
-import com.unciv.logic.GameSaver
 import com.unciv.logic.GameStarter
-import com.unciv.logic.map.mapgenerator.MapGenerator
+import com.unciv.logic.UncivShowableException
 import com.unciv.logic.map.MapParameters
-import com.unciv.logic.map.MapSize
+import com.unciv.logic.map.MapShape
+import com.unciv.logic.map.MapSizeNew
 import com.unciv.logic.map.MapType
+import com.unciv.logic.map.mapgenerator.MapGenerator
+import com.unciv.models.metadata.BaseRuleset
+import com.unciv.models.metadata.GameSetupInfo
+import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
-import com.unciv.models.translations.tr
-import com.unciv.ui.MultiplayerScreen
-import com.unciv.ui.mapeditor.*
-import com.unciv.ui.newgamescreen.GameSetupInfo
+import com.unciv.ui.civilopedia.CivilopediaScreen
+import com.unciv.ui.images.ImageGetter
+import com.unciv.ui.map.TileGroupMap
+import com.unciv.ui.mapeditor.EditorMapHolder
+import com.unciv.ui.mapeditor.MapEditorScreen
+import com.unciv.ui.multiplayer.MultiplayerScreen
 import com.unciv.ui.newgamescreen.NewGameScreen
 import com.unciv.ui.pickerscreens.ModManagementScreen
+import com.unciv.ui.popup.Popup
+import com.unciv.ui.popup.ToastPopup
+import com.unciv.ui.popup.closeAllPopups
+import com.unciv.ui.popup.hasOpenPopups
+import com.unciv.ui.popup.popups
 import com.unciv.ui.saves.LoadGameScreen
-import com.unciv.ui.utils.*
-import com.unciv.ui.worldscreen.mainmenu.OptionsPopup
-import kotlin.concurrent.thread
+import com.unciv.ui.saves.QuickSave
+import com.unciv.ui.tutorials.EasterEggRulesets
+import com.unciv.ui.tutorials.EasterEggRulesets.modifyForEasterEgg
+import com.unciv.ui.utils.AutoScrollPane
+import com.unciv.ui.utils.BaseScreen
+import com.unciv.ui.utils.KeyCharAndCode
+import com.unciv.ui.utils.RecreateOnResize
+import com.unciv.ui.utils.UncivTooltip.Companion.addTooltip
+import com.unciv.ui.utils.extensions.center
+import com.unciv.ui.utils.extensions.keyShortcuts
+import com.unciv.ui.utils.extensions.onActivation
+import com.unciv.ui.utils.extensions.setFontSize
+import com.unciv.ui.utils.extensions.surroundWithCircle
+import com.unciv.ui.utils.extensions.toLabel
+import com.unciv.ui.worldscreen.mainmenu.WorldScreenMenuPopup
+import com.unciv.utils.concurrency.Concurrency
+import com.unciv.utils.concurrency.launchOnGLThread
+import kotlin.math.min
 
-class MainMenuScreen: CameraStageBaseScreen() {
-    private val autosave = "Autosave"
-    private val backgroundTable = Table().apply { background=ImageGetter.getBackground(Color.WHITE) }
 
-    private fun getTableBlock(text: String, icon: String, function: () -> Unit): Table {
+class MainMenuScreen: BaseScreen(), RecreateOnResize {
+    private val backgroundTable = Table().apply { background= ImageGetter.getBackground(Color.WHITE) }
+    private val singleColumn = isCrampedPortrait()
+    private var easterEggRuleset: Ruleset? = null  // Cache it so the next 'egg' can be found in Civilopedia
+
+    /** Create one **Main Menu Button** including onClick/key binding
+     *  @param text      The text to display on the button
+     *  @param icon      The path of the icon to display on the button
+     *  @param key       Optional key binding (limited to Char subset of [KeyCharAndCode], which is OK for the main menu)
+     *  @param function  Action to invoke when the button is activated
+     */
+    private fun getMenuButton(
+        text: String,
+        icon: String,
+        key: Char? = null,
+        keyVisualOnly: Boolean = false,
+        function: () -> Unit
+    ): Table {
         val table = Table().pad(15f, 30f, 15f, 30f)
-        table.background = ImageGetter.getRoundedEdgeTableBackground(ImageGetter.getBlue())
+        table.background = ImageGetter.getRoundedEdgeRectangle(ImageGetter.getBlue())
         table.add(ImageGetter.getImage(icon)).size(50f).padRight(30f)
         table.add(text.toLabel().setFontSize(30)).minWidth(200f)
+
         table.touchable = Touchable.enabled
-        table.onClick(function)
+        table.onActivation(function)
+
+        if (key != null) {
+            if (!keyVisualOnly)
+                table.keyShortcuts.add(key)
+            table.addTooltip(key, 32f)
+        }
+
         table.pack()
         return table
     }
@@ -46,173 +94,180 @@ class MainMenuScreen: CameraStageBaseScreen() {
 
         // If we were in a mod, some of the resource images for the background map we're creating
         // will not exist unless we reset the ruleset and images
-        ImageGetter.ruleset = RulesetCache.getBaseRuleset()
-        //ImageGetter.refreshAtlas()
+        ImageGetter.ruleset = RulesetCache.getVanillaRuleset()
 
-        thread(name = "ShowMapBackground") {
-            val newMap = MapGenerator(RulesetCache.getBaseRuleset())
-                    .generateMap(MapParameters().apply { size = MapSize.Small; type = MapType.default })
-            Gdx.app.postRunnable { // for GL context
-                ImageGetter.setNewRuleset(RulesetCache.getBaseRuleset())
-                val mapHolder = EditorMapHolder(MapEditorScreen(), newMap)
+        Concurrency.run("ShowMapBackground") {
+            var scale = 1f
+            var mapWidth = stage.width / TileGroupMap.groupHorizontalAdvance
+            var mapHeight = stage.height / TileGroupMap.groupSize
+            if (mapWidth * mapHeight > 3000f) {  // 3000 as max estimated number of tiles is arbitrary (we had typically 721 before)
+                scale = mapWidth * mapHeight / 3000f
+                mapWidth /= scale
+                mapHeight /= scale
+                scale = min(scale, 20f)
+            }
+
+            val baseRuleset = RulesetCache.getVanillaRuleset()
+            easterEggRuleset = EasterEggRulesets.getTodayEasterEggRuleset()?.let {
+                RulesetCache.getComplexRuleset(baseRuleset, listOf(it))
+            }
+            val mapRuleset = easterEggRuleset ?: baseRuleset
+
+            val newMap = MapGenerator(mapRuleset)
+                    .generateMap(MapParameters().apply {
+                        shape = MapShape.rectangular
+                        mapSize = MapSizeNew(mapWidth.toInt() + 1, mapHeight.toInt() + 1)
+                        type = MapType.default
+                        waterThreshold = -0.055f // Gives the same level as when waterThreshold was unused in MapType.default
+                        modifyForEasterEgg()
+                    })
+
+            launchOnGLThread { // for GL context
+                ImageGetter.setNewRuleset(mapRuleset)
+                val mapHolder = EditorMapHolder(this@MainMenuScreen, newMap) {}
+                mapHolder.setScale(scale)
                 backgroundTable.addAction(Actions.sequence(
                         Actions.fadeOut(0f),
                         Actions.run {
-                            mapHolder.apply {
-                                addTiles(30f)
-                                touchable = Touchable.disabled
-                                setScale(1f)
-                                center(this@MainMenuScreen.stage)
-                                layout()
-                            }
-                            backgroundTable.add(mapHolder).size(stage.width, stage.height)
+                            backgroundTable.addActor(mapHolder)
+                            mapHolder.center(backgroundTable)
                         },
                         Actions.fadeIn(0.3f)
                 ))
-
             }
         }
 
-        val column1 = Table().apply { defaults().pad(10f) }
-        val column2 = Table().apply { defaults().pad(10f) }
-        val autosaveGame = GameSaver.getSave(autosave, false)
-        if (autosaveGame.exists()) {
-            val resumeTable = getTableBlock("Resume","OtherIcons/Resume") { autoLoadGame() }
+        val column1 = Table().apply { defaults().pad(10f).fillX() }
+        val column2 = if (singleColumn) column1 else Table().apply { defaults().pad(10f).fillX() }
+
+        if (game.files.autosaveExists()) {
+            val resumeTable = getMenuButton("Resume","OtherIcons/Resume", 'r')
+                { resumeGame() }
             column1.add(resumeTable).row()
         }
 
-        val quickstartTable = getTableBlock("Quickstart", "OtherIcons/Quickstart") { quickstartNewGame() }
+        val quickstartTable = getMenuButton("Quickstart", "OtherIcons/Quickstart", 'q')
+            { quickstartNewGame() }
         column1.add(quickstartTable).row()
 
-        val newGameButton = getTableBlock("Start new game", "OtherIcons/New") {
-            game.setScreen(NewGameScreen(this))
-            dispose()
-        }
+        val newGameButton = getMenuButton("Start new game", "OtherIcons/New", 'n')
+            { game.pushScreen(NewGameScreen()) }
         column1.add(newGameButton).row()
 
-        if (GameSaver.getSaves(false).any()) {
-            val loadGameTable = getTableBlock("Load game", "OtherIcons/Load")
-                { game.setScreen(LoadGameScreen(this)) }
+        if (game.files.getSaves().any()) {
+            val loadGameTable = getMenuButton("Load game", "OtherIcons/Load", 'l')
+                { game.pushScreen(LoadGameScreen(this)) }
             column1.add(loadGameTable).row()
         }
 
-        val multiplayerTable = getTableBlock("Multiplayer", "OtherIcons/Multiplayer")
-            { game.setScreen(MultiplayerScreen(this)) }
+        val multiplayerTable = getMenuButton("Multiplayer", "OtherIcons/Multiplayer", 'm')
+            { game.pushScreen(MultiplayerScreen(this)) }
         column2.add(multiplayerTable).row()
 
-        val mapEditorScreenTable = getTableBlock("Map editor", "OtherIcons/MapEditor")
-            { if(stage.actors.none { it is MapEditorMainScreenPopup }) MapEditorMainScreenPopup(this) }
+        val mapEditorScreenTable = getMenuButton("Map editor", "OtherIcons/MapEditor", 'e')
+            { game.pushScreen(MapEditorScreen()) }
         column2.add(mapEditorScreenTable).row()
 
-        val modsTable = getTableBlock("Mods", "OtherIcons/Mods")
-            { game.setScreen(ModManagementScreen()) }
+        val modsTable = getMenuButton("Mods", "OtherIcons/Mods", 'd')
+            { game.pushScreen(ModManagementScreen()) }
         column2.add(modsTable).row()
 
-
-
-        val optionsTable = getTableBlock("Options", "OtherIcons/Options")
-            { OptionsPopup(this).open() }
+        val optionsTable = getMenuButton("Options", "OtherIcons/Options", 'o')
+            { this.openOptionsPopup() }
         column2.add(optionsTable).row()
 
 
-        val table=Table().apply { defaults().pad(10f) }
+        val table = Table().apply { defaults().pad(10f) }
         table.add(column1)
-        table.add(column2)
+        if (!singleColumn) table.add(column2)
         table.pack()
 
-        val scroll = ScrollPane(table)
-        scroll.setSize(table.width, stage.height * 0.98f)
-        scroll.center(stage)
-        scroll.setOverscroll(false, false)
-        stage.addActor(scroll)
+        val scrollPane = AutoScrollPane(table)
+        scrollPane.setFillParent(true)
+        stage.addActor(scrollPane)
+        table.center(scrollPane)
 
-        onBackButtonClicked {
-            if(hasOpenPopups()) {
+        globalShortcuts.add(KeyCharAndCode.BACK) {
+            if (hasOpenPopups()) {
                 closeAllPopups()
-                return@onBackButtonClicked
+                return@add
             }
-            val promptWindow = Popup(this)
-            promptWindow.addGoodSizedLabel("Do you want to exit the game?".tr())
-            promptWindow.row()
-            promptWindow.addButton("Yes") { Gdx.app.exit() }
-            promptWindow.addButton("No") { promptWindow.close() }
-            // show the dialog
-            promptWindow.open()     // true = always on top
+            game.popScreen()
         }
+
+        val helpButton = "?".toLabel(fontSize = 32)
+            .apply { setAlignment(Align.center) }
+            .surroundWithCircle(40f, color = ImageGetter.getBlue())
+            .apply { actor.y -= 2.5f } // compensate font baseline (empirical)
+            .surroundWithCircle(42f, resizeActor = false)
+        helpButton.touchable = Touchable.enabled
+        helpButton.onActivation { openCivilopedia() }
+        helpButton.keyShortcuts.add(Input.Keys.F1)
+        helpButton.addTooltip(KeyCharAndCode(Input.Keys.F1), 20f)
+        helpButton.setPosition(20f, 20f)
+        stage.addActor(helpButton)
     }
 
 
-    /** Shows the [Popup] with the map editor initialization options */
-    class MapEditorMainScreenPopup(screen: MainMenuScreen):Popup(screen){
-        init{
-            defaults().pad(10f)
-
-            val tableBackground = ImageGetter.getBackground(colorFromRGB(29, 102, 107))
-
-            val newMapButton = screen.getTableBlock("New map", "OtherIcons/New") {
-                screen.game.setScreen(NewMapScreen())
-                screen.dispose()
-            }
-            newMapButton.background = tableBackground
-            add(newMapButton).row()
-
-            val loadMapButton = screen.getTableBlock("Load map", "OtherIcons/Load") {
-                val loadMapScreen = SaveAndLoadMapScreen(null)
-                loadMapScreen.closeButton.isVisible = true
-                loadMapScreen.closeButton.onClick {
-                    screen.game.setScreen(MainMenuScreen())
-                    loadMapScreen.dispose()
-                }
-                screen.game.setScreen(loadMapScreen)
-                screen.dispose()
-            }
-
-            loadMapButton.background = tableBackground
-            add(loadMapButton).row()
-
-            add(screen.getTableBlock("Close", "OtherIcons/Close") { close() }
-                    .apply { background=tableBackground })
-
-            open(force = true)
-        }
-    }
-
-
-    private fun autoLoadGame() {
-        ToastPopup("Loading...", this)
-        thread { // Load game from file to class on separate thread to avoid ANR...
-            var savedGame: GameInfo
-            try {
-                savedGame = GameSaver.loadGameByName(autosave)
-            } catch (outOfMemory: OutOfMemoryError) {
-                Gdx.app.postRunnable { ToastPopup("Not enough memory on phone to load game!", this) }
-                return@thread
-            } catch (ex: Exception) { // silent fail if we can't read the autosave for any reason - try to load the last autosave by turn number first
-                // This can help for situations when the autosave is corrupted
-                try {
-                    val autosaves = GameSaver.getSaves().filter { it.name() != autosave && it.name().startsWith(autosave) }
-                    savedGame = GameSaver.loadGameFromFile(autosaves.maxBy { it.lastModified() }!!)
-                } catch (ex: Exception) {
-                    Gdx.app.postRunnable { ToastPopup("Cannot resume game!", this) }
-                    return@thread
-                }
-            }
-
-            Gdx.app.postRunnable { /// ... and load it into the screen on main thread for GL context
-                try {
-                    game.loadGame(savedGame)
-                    dispose()
-                } catch (outOfMemory: OutOfMemoryError) {
-                    ToastPopup("Not enough memory on phone to load game!", this)
-                }
-
-            }
+    private fun resumeGame() {
+        val curWorldScreen = game.worldScreen
+        if (curWorldScreen != null) {
+            game.resetToWorldScreen()
+            ImageGetter.ruleset = game.gameInfo!!.ruleSet
+            curWorldScreen.popups.filterIsInstance(WorldScreenMenuPopup::class.java).forEach(Popup::close)
+        } else {
+            QuickSave.autoLoadGame(this)
         }
     }
 
     private fun quickstartNewGame() {
-        val newGame = GameStarter.startNewGame(GameSetupInfo().apply { gameParameters.difficulty = "Chieftain" })
-        game.loadGame(newGame)
+        ToastPopup("Working...", this)
+        val errorText = "Cannot start game with the default new game parameters!"
+        Concurrency.run("QuickStart") {
+            val newGame: GameInfo
+            // Can fail when starting the game...
+            try {
+                newGame = GameStarter.startNewGame(GameSetupInfo.fromSettings("Chieftain"))
+            } catch (notAPlayer: UncivShowableException) {
+                val (message) = LoadGameScreen.getLoadExceptionMessage(notAPlayer)
+                launchOnGLThread { ToastPopup(message, this@MainMenuScreen) }
+                return@run
+            } catch (ex: Exception) {
+                launchOnGLThread { ToastPopup(errorText, this@MainMenuScreen) }
+                return@run
+            }
+
+            // ...or when loading the game
+            try {
+                game.loadGame(newGame)
+            } catch (outOfMemory: OutOfMemoryError) {
+                launchOnGLThread {
+                    ToastPopup("Not enough memory on phone to load game!", this@MainMenuScreen)
+                }
+            } catch (notAPlayer: UncivShowableException) {
+                val (message) = LoadGameScreen.getLoadExceptionMessage(notAPlayer)
+                launchOnGLThread {
+                    ToastPopup(message, this@MainMenuScreen)
+                }
+            } catch (ex: Exception) {
+                launchOnGLThread {
+                    ToastPopup(errorText, this@MainMenuScreen)
+                }
+            }
+        }
     }
 
+    private fun openCivilopedia() {
+        val rulesetParameters = game.settings.lastGameSetup?.gameParameters
+        val ruleset = easterEggRuleset ?:
+            if (rulesetParameters == null)
+                RulesetCache[BaseRuleset.Civ_V_GnK.fullName] ?: return
+            else RulesetCache.getComplexRuleset(rulesetParameters)
+        UncivGame.Current.translations.translationActiveMods = ruleset.mods
+        ImageGetter.setNewRuleset(ruleset)
+        setSkin()
+        game.pushScreen(CivilopediaScreen(ruleset))
+    }
+
+    override fun recreate(): BaseScreen = MainMenuScreen()
 }

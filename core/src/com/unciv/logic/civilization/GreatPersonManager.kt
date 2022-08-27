@@ -1,54 +1,56 @@
 package com.unciv.logic.civilization
 
-import com.unciv.models.stats.Stat
-import com.unciv.models.stats.Stats
+import com.unciv.logic.IsPartOfGameInfoSerialization
+import com.unciv.models.Counter
+import java.util.HashSet
 
-class GreatPersonManager {
+// todo: Great Admiral?
+// todo: Free GP from policies and wonders should increase threshold according to the wiki
+// todo: GP from Maya long count should increase threshold as well - implement together
+
+class GreatPersonManager : IsPartOfGameInfoSerialization {
     var pointsForNextGreatPerson = 100
-    var pointsForNextGreatGeneral = 30
-    var greatPersonPoints = Stats()
-    var greatGeneralPoints = 0
-    var freeGreatPeople=0
+    var pointsForNextGreatGeneral = 200
 
-    val statToGreatPersonMapping = HashMap<Stat,String>().apply {
-        put(Stat.Science,"Great Scientist")
-        put(Stat.Production,"Great Engineer")
-        put(Stat.Gold, "Great Merchant")
-        put(Stat.Culture, "Great Artist")
-    }
+    var greatPersonPointsCounter = Counter<String>()
+    var greatGeneralPoints = 0
+    var freeGreatPeople = 0
+    /** Marks subset of [freeGreatPeople] as subject to maya ability restrictions (each only once untill all used) */
+    var mayaLimitedFreeGP = 0
+    /** Remaining candidates for maya ability - whenever empty refilled from all GP, starts out empty */
+    var longCountGPPool = HashSet<String>()
 
     fun clone(): GreatPersonManager {
         val toReturn = GreatPersonManager()
-        toReturn.freeGreatPeople=freeGreatPeople
-        toReturn.greatPersonPoints=greatPersonPoints.clone()
-        toReturn.pointsForNextGreatPerson=pointsForNextGreatPerson
+        toReturn.freeGreatPeople = freeGreatPeople
+        toReturn.greatPersonPointsCounter = greatPersonPointsCounter.clone()
+        toReturn.pointsForNextGreatPerson = pointsForNextGreatPerson
         toReturn.pointsForNextGreatGeneral = pointsForNextGreatGeneral
         toReturn.greatGeneralPoints = greatGeneralPoints
+        toReturn.mayaLimitedFreeGP = mayaLimitedFreeGP
+        toReturn.longCountGPPool = longCountGPPool.toHashSet()
         return toReturn
     }
 
     fun getNewGreatPerson(): String? {
-        val greatPerson: String? = null
-
         if (greatGeneralPoints > pointsForNextGreatGeneral) {
             greatGeneralPoints -= pointsForNextGreatGeneral
             pointsForNextGreatGeneral += 50
             return "Great General"
         }
 
-        val greatPersonPointsHashmap = greatPersonPoints.toHashMap()
-        for(entry in statToGreatPersonMapping){
-            if(greatPersonPointsHashmap[entry.key]!!>pointsForNextGreatPerson){
-                greatPersonPoints.add(entry.key,-pointsForNextGreatPerson.toFloat())
-                pointsForNextGreatPerson*=2
-                return entry.value
+        for ((key, value) in greatPersonPointsCounter) {
+            if (value > pointsForNextGreatPerson) {
+                greatPersonPointsCounter.add(key, -pointsForNextGreatPerson)
+                pointsForNextGreatPerson *= 2
+                return key
             }
         }
-        return greatPerson
+        return null
     }
 
-    fun addGreatPersonPoints(greatPersonPointsForTurn: Stats) {
-        greatPersonPoints.add(greatPersonPointsForTurn)
+    fun addGreatPersonPoints(greatPersonPointsForTurn: Counter<String>) {
+        greatPersonPointsCounter.add(greatPersonPointsForTurn)
     }
 
 

@@ -1,37 +1,32 @@
 package com.unciv.ui.pickerscreens
 
-import com.badlogic.gdx.scenes.scene2d.ui.Button
 import com.unciv.UncivGame
 import com.unciv.logic.civilization.CivilizationInfo
-import com.unciv.logic.civilization.GreatPersonManager
 import com.unciv.models.UncivSound
 import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.models.translations.tr
-import com.unciv.ui.utils.ImageGetter
-import com.unciv.ui.utils.onClick
-import com.unciv.ui.utils.toLabel
+import com.unciv.ui.images.ImageGetter
+import com.unciv.ui.utils.extensions.isEnabled
+import com.unciv.ui.utils.extensions.onClick
 
 class GreatPersonPickerScreen(val civInfo:CivilizationInfo) : PickerScreen() {
     private var theChosenOne: BaseUnit? = null
 
     init {
-        closeButton.isVisible=false
+        closeButton.isVisible = false
         rightSideButton.setText("Choose a free great person".tr())
 
         val greatPersonUnits = civInfo.getGreatPeople()
-        for (unit in greatPersonUnits)
-        {
-            val button = Button(skin)
+        val useMayaLongCount = civInfo.greatPeople.mayaLimitedFreeGP > 0
 
-            button.add(ImageGetter.getUnitIcon(unit.name)).size(30f).pad(10f)
-            button.add(unit.name.toLabel()).pad(10f)
+        for (unit in greatPersonUnits) {
+            val button = PickerPane.getPickerOptionButton(ImageGetter.getUnitIcon(unit.name), unit.name)
             button.pack()
-            button.onClick {
+            button.isEnabled = !useMayaLongCount || unit.name in civInfo.greatPeople.longCountGPPool
+            if (button.isEnabled) button.onClick {
                 theChosenOne = unit
-                val unitDescription=HashSet<String>()
-                unit.uniques.forEach { unitDescription.add(it.tr()) }
                 pick("Get [${unit.name}]".tr())
-                descriptionLabel.setText(unitDescription.joinToString())
+                descriptionLabel.setText(unit.getShortDescription())
             }
             topTable.add(button).pad(10f).row()
         }
@@ -39,7 +34,11 @@ class GreatPersonPickerScreen(val civInfo:CivilizationInfo) : PickerScreen() {
         rightSideButton.onClick(UncivSound.Choir) {
             civInfo.addUnit(theChosenOne!!.name, civInfo.getCapital())
             civInfo.greatPeople.freeGreatPeople--
-            UncivGame.Current.setWorldScreen()
+            if (useMayaLongCount) {
+                civInfo.greatPeople.mayaLimitedFreeGP--
+                civInfo.greatPeople.longCountGPPool.remove(theChosenOne!!.name)
+            }
+            UncivGame.Current.popScreen()
         }
 
     }

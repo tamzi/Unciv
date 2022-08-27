@@ -1,9 +1,8 @@
 package com.unciv.ui.newgamescreen
 
 import com.badlogic.gdx.scenes.scene2d.Stage
+import com.unciv.models.metadata.GameSetupInfo
 import com.unciv.models.ruleset.Ruleset
-import com.unciv.ui.pickerscreens.PickerScreen
-import com.unciv.ui.utils.CameraStageBaseScreen
 
 /**
  * Interface to implement for all screens using [GameOptionsTable] and [PlayerPickerTable]
@@ -14,9 +13,6 @@ interface IPreviousScreen {
     var stage: Stage
     val ruleset: Ruleset
 
-    /**
-     * Method added for compatibility with [PlayerPickerTable] which addresses
-     * [setRightSideButtonEnabled] method of previous screen
-     */
-    fun setRightSideButtonEnabled(boolean: Boolean)
+    // Having `fun setRightSideButtonEnabled(boolean: Boolean)` part of this interface gives a warning:
+    // "Names of the parameter #1 conflict in the following members of supertypes: 'public abstract fun setRightSideButtonEnabled(boolean: Boolean): Unit defined in com.unciv.ui.newgamescreen.IPreviousScreen, public final fun setRightSideButtonEnabled(bool: Boolean): Unit defined in com.unciv.ui.pickerscreens.PickerScreen'. This may cause problems when calling this function with named arguments."
 }

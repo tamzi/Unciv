@@ -1,19 +1,27 @@
 package com.unciv.ui.pickerscreens
 
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.scenes.scene2d.Touchable
-import com.badlogic.gdx.scenes.scene2d.ui.Button
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
 import com.unciv.UncivGame
 import com.unciv.logic.map.MapUnit
-import com.unciv.models.Tutorial
+import com.unciv.models.TutorialTrigger
 import com.unciv.models.UncivSound
+import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.Promotion
 import com.unciv.models.translations.tr
-import com.unciv.ui.utils.*
+import com.unciv.ui.images.ImageGetter
+import com.unciv.ui.popup.AskTextPopup
+import com.unciv.ui.utils.BaseScreen
+import com.unciv.ui.utils.KeyCharAndCode
+import com.unciv.ui.utils.RecreateOnResize
+import com.unciv.ui.utils.extensions.isEnabled
+import com.unciv.ui.utils.extensions.onClick
+import com.unciv.ui.utils.extensions.surroundWithCircle
+import com.unciv.ui.utils.extensions.toLabel
+import com.unciv.ui.utils.extensions.toTextButton
 
-class PromotionPickerScreen(val unit: MapUnit) : PickerScreen() {
+class PromotionPickerScreen(val unit: MapUnit) : PickerScreen(), RecreateOnResize {
     private var selectedPromotion: Promotion? = null
 
     private fun acceptPromotion(promotion: Promotion?) {
@@ -22,71 +30,68 @@ class PromotionPickerScreen(val unit: MapUnit) : PickerScreen() {
 
         unit.promotions.addPromotion(promotion.name)
         if (unit.promotions.canBePromoted())
-            game.setScreen(PromotionPickerScreen(unit))
+            game.replaceCurrentScreen(recreate())
         else
-            game.setWorldScreen()
-        dispose()
-        game.worldScreen.shouldUpdate = true
+            game.popScreen()
     }
 
     init {
-        onBackButtonClicked { UncivGame.Current.setWorldScreen() }
         setDefaultCloseAction()
-
 
         rightSideButton.setText("Pick promotion".tr())
         rightSideButton.onClick(UncivSound.Promote) {
-          acceptPromotion(selectedPromotion)
+            acceptPromotion(selectedPromotion)
         }
+
         val canBePromoted = unit.promotions.canBePromoted()
-        val canChangeState = game.worldScreen.canChangeState
+        val canChangeState = game.worldScreen!!.canChangeState
         val canPromoteNow = canBePromoted && canChangeState
-        if (!canPromoteNow)
-            rightSideButton.disable()
+                && unit.currentMovement > 0 && unit.attacksThisTurn == 0
+        rightSideButton.isEnabled = canPromoteNow
+        descriptionLabel.setText(updateDescriptionLabel())
 
         val availablePromotionsGroup = Table()
         availablePromotionsGroup.defaults().pad(5f)
 
         val unitType = unit.type
         val promotionsForUnitType = unit.civInfo.gameInfo.ruleSet.unitPromotions.values.filter {
-            it.unitTypes.contains(unitType.toString())
-                    || unit.promotions.promotions.contains(it.name) }
+            it.unitTypes.contains(unitType.name) || unit.promotions.promotions.contains(it.name)
+        }
         val unitAvailablePromotions = unit.promotions.getAvailablePromotions()
 
-        if(canPromoteNow && unit.instanceName == null) {
-            val renameButton = "Choose name for [${unit.name}]".toTextButton()
-            renameButton.touchable = Touchable.enabled
-            renameButton.onClick {
-                RenameUnitPopup(unit, this).open()
-            }
-            availablePromotionsGroup.add(renameButton)
-            availablePromotionsGroup.row()
+        //Always allow the user to rename the unit as many times as they like.
+        val renameButton = "Choose name for [${unit.name}]".toTextButton()
+        renameButton.isEnabled = true
+
+        renameButton.onClick {
+            UnitRenamePopup(
+                screen = this,
+                unit = unit,
+                actionOnClose = {
+                    this.game.replaceCurrentScreen(PromotionPickerScreen(unit)) })
         }
+        availablePromotionsGroup.add(renameButton)
+        availablePromotionsGroup.row()
+
         for (promotion in promotionsForUnitType) {
-            if(promotion.name=="Heal Instantly" && unit.health==100) continue
+            if (promotion.hasUnique(UniqueType.OneTimeUnitHeal) && unit.health == 100) continue
             val isPromotionAvailable = promotion in unitAvailablePromotions
             val unitHasPromotion = unit.promotions.promotions.contains(promotion.name)
 
-            val selectPromotionButton = Button(skin)
-            selectPromotionButton.add(ImageGetter.getPromotionIcon(promotion.name)).size(30f).pad(10f)
-            selectPromotionButton.add(promotion.name.toLabel()).pad(10f).padRight(20f)
-            selectPromotionButton.touchable = Touchable.enabled
+            val selectPromotionButton = PickerPane.getPickerOptionButton(ImageGetter.getPromotionIcon(promotion.name), promotion.name)
+            selectPromotionButton.isEnabled = true
             selectPromotionButton.onClick {
-                if(canBePromoted && isPromotionAvailable && !unitHasPromotion && canChangeState) {
-                    selectedPromotion = promotion
-                    rightSideButton.enable()
-                } else {
-                    selectedPromotion = null
-                    rightSideButton.disable()
-                }
+                val enable = canBePromoted && isPromotionAvailable && !unitHasPromotion && canChangeState
+                selectedPromotion = if (enable) promotion else null
+                rightSideButton.isEnabled = enable
                 rightSideButton.setText(promotion.name.tr())
 
-                descriptionLabel.setText(promotion.getDescription(promotionsForUnitType))
+                descriptionLabel.setText(updateDescriptionLabel(promotion.getDescription(promotionsForUnitType)))
             }
 
             availablePromotionsGroup.add(selectPromotionButton)
 
-            if (canBePromoted && isPromotionAvailable && canChangeState) {
+            if (canPromoteNow && isPromotionAvailable) {
                 val pickNow = "Pick now!".toLabel()
                 pickNow.setAlignment(Align.center)
                 pickNow.onClick {
@@ -102,6 +107,32 @@ class PromotionPickerScreen(val unit: MapUnit) : PickerScreen() {
         }
         topTable.add(availablePromotionsGroup)
 
-        displayTutorial(Tutorial.Experience)
+        displayTutorial(TutorialTrigger.Experience)
+    }
+
+    private fun setScrollY(scrollY: Float) {
+        splitPane.pack()    // otherwise scrollPane.maxY == 0
+        scrollPane.scrollY = scrollY
+        scrollPane.updateVisualScroll()
+    }
+
+    private fun updateDescriptionLabel(): String {
+        var newDescriptionText = unit.displayName().tr()
+
+        return newDescriptionText.toString()
+    }
+
+    private fun updateDescriptionLabel(promotionDescription: String): String {
+        var newDescriptionText = unit.displayName().tr()
+
+        newDescriptionText += "\n" + promotionDescription
+
+        return newDescriptionText.toString()
+    }
+
+    override fun recreate(): BaseScreen {
+        val newScreen = PromotionPickerScreen(unit)
+        newScreen.setScrollY(scrollPane.scrollY)
+        return newScreen
     }
 }

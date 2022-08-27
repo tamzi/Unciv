@@ -1,6 +1,5 @@
 package com.unciv.ui.tilegroups
 
-import com.badlogic.gdx.graphics.g2d.Batch
 import com.unciv.UncivGame
 import com.unciv.logic.city.CityInfo
 import com.unciv.logic.civilization.CivilizationInfo
@@ -15,8 +14,8 @@ class WorldTileGroup(internal val worldScreen: WorldScreen, tileInfo: TileInfo, 
     private var cityButton: CityButton? = null
 
     fun selectUnit(unit: MapUnit) {
-        if(unit.type.isAirUnit()) return // doesn't appear on map so nothing to select
-        val unitImage = if (unit.type.isCivilian()) icons.civilianUnitIcon
+        if(unit.baseUnit.movesLikeAirUnits()) return // doesn't appear on map so nothing to select
+        val unitImage = if (unit.isCivilian()) icons.civilianUnitIcon
         else icons.militaryUnitIcon
         unitImage?.selectUnit()
     }
@@ -32,11 +31,15 @@ class WorldTileGroup(internal val worldScreen: WorldScreen, tileInfo: TileInfo, 
                 && city!!.civInfo == viewingCiv)
             icons.addPopulationIcon()
         // update city buttons in explored tiles or entire map
-        if (showEntireMap || viewingCiv.exploredTiles.contains(tileInfo.position))
+        if (showEntireMap
+                || viewingCiv.exploredTiles.contains(tileInfo.position)
+                || viewingCiv.isSpectator()
+                || (worldScreen.viewingCiv.isSpectator() && !worldScreen.fogOfWar)) {
             updateCityButton(city, tileIsViewable || showEntireMap) // needs to be before the update so the units will be above the city button
-        else if (worldScreen.viewingCiv.isSpectator())
-            // remove city buttons in unexplored tiles during spectating/fog of war
+        } else if (worldScreen.viewingCiv.isSpectator() && worldScreen.fogOfWar) {
+            // remove city buttons in unexplored tiles during spectating and fog of war enabled
             updateCityButton(null, showEntireMap)
+        }
 
         super.update(viewingCiv, UncivGame.Current.settings.showResourcesAndImprovements, UncivGame.Current.settings.showTileYields)
     }
