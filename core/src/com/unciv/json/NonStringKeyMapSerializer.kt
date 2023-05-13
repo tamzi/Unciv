@@ -3,6 +3,7 @@ package com.unciv.json
 import com.badlogic.gdx.utils.Json
 import com.badlogic.gdx.utils.Json.Serializer
 import com.badlogic.gdx.utils.JsonValue
+import com.unciv.logic.automation.civilization.Encampment
 
 /**
  * A [Serializer] for gdx's [Json] that serializes a map that does not have [String] as its key class.
@@ -40,34 +41,29 @@ class NonStringKeyMapSerializer<MT: MutableMap<KT, Any>, KT>(
     override fun read(json: Json, jsonData: JsonValue, type: Class<*>?): MT {
         val result = mutableMapFactory()
         val entries = jsonData.get("entries")
-        if (entries == null) {
-            readOldFormat(jsonData, json, result)
-        } else {
-            readNewFormat(entries, json, result)
-        }
+        readNewFormat(entries, json, result)
         return result
     }
 
-    @Deprecated("This is only here temporarily until all users migrate the old properties to the new ones")
-    private fun readOldFormat(jsonData: JsonValue, json: Json, result: MT) {
-        @Suppress("UNCHECKED_CAST")  // We know better
-        val map = result as MutableMap<String, Any>
-        var child: JsonValue? = jsonData.child
-        while (child != null) {
-            if (child.name == "class") {
-                child = child.next
-                continue
-            }
-            map[child.name] = json.readValue(null, child)
-            child = child.next
-        }
-    }
 
     private fun readNewFormat(entries: JsonValue, json: Json, result: MT) {
         var entry = entries.child
         while (entry != null) {
             val key = json.readValue(keyClass, entry.child)
-            val value = json.readValue<Any>(null, entry.child.next)
+
+            // 4.6.10 moved the Encampment class, but deserialization of old games which had the old
+            // full package name written out depended on the class loader finding it under the serialized name...
+            // This kludge steps in and allows both fully qualified class names until a better way is found
+            // See #9367
+            val isOldEncampment = entry.child.next.child.run {
+                    name == "class" && isString && asString() == "com.unciv.logic.Encampment"
+                }
+            val value = if (isOldEncampment) {
+                entry.child.next.remove("class")
+                json.readValue(Encampment::class.java, entry.child.next)
+            }
+            else json.readValue<Any>(null, entry.child.next)
+
             result[key!!] = value!!
 
             entry = entry.next

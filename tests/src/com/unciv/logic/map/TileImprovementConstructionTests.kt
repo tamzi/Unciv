@@ -2,10 +2,12 @@
 package com.unciv.logic.map
 
 import com.badlogic.gdx.math.Vector2
-import com.unciv.logic.city.CityInfo
-import com.unciv.logic.civilization.CivilizationInfo
+import com.unciv.logic.city.City
+import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.map.tile.Tile
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
+import com.unciv.models.ruleset.nation.Nation
 import com.unciv.models.ruleset.tile.TerrainType
 import com.unciv.models.ruleset.unique.StateForConditionals
 import com.unciv.models.ruleset.unique.UniqueType
@@ -18,12 +20,12 @@ import org.junit.runner.RunWith
 @RunWith(GdxTestRunner::class)
 class TileImprovementConstructionTests {
 
-    private var civInfo = CivilizationInfo()
-    private var city = CityInfo()
+    private var civInfo = Civilization()
+    private var city = City()
     private var ruleSet = Ruleset()
     private val tileMap = TileMap()
 
-    private fun getTile() = TileInfo().apply {
+    private fun getTile() = Tile().apply {
         baseTerrain = "Plains"
         ruleset = ruleSet
         position = Vector2(1f, 1f) // so that it's not on the same position as the city
@@ -33,11 +35,12 @@ class TileImprovementConstructionTests {
 
     @Before
     fun initTheWorld() {
-        RulesetCache.loadRulesets()
+        RulesetCache.loadRulesets(noMods = true)
         ruleSet = RulesetCache.getVanillaRuleset()
         civInfo.tech.researchedTechnologies.addAll(ruleSet.technologies.values)
         civInfo.tech.techsResearched.addAll(ruleSet.technologies.keys)
-        city.civInfo = civInfo
+        civInfo.nation = Nation()
+        city.civ = civInfo
     }
 
 
@@ -62,7 +65,7 @@ class TileImprovementConstructionTests {
             tile.setTransients()
             if (improvement.uniqueTo != null) civInfo.civName = improvement.uniqueTo!!
 
-            val canBeBuilt = tile.canBuildImprovement(improvement, civInfo)
+            val canBeBuilt = tile.improvementFunctions.canBuildImprovement(improvement, civInfo)
             Assert.assertTrue(improvement.name, canBeBuilt)
         }
     }
@@ -79,7 +82,7 @@ class TileImprovementConstructionTests {
             if (improvement.hasUnique(UniqueType.CanOnlyBeBuiltOnTile, StateForConditionals.IgnoreConditionals)) continue
 
             tile.setTransients()
-            val canBeBuilt = tile.canBuildImprovement(improvement, civInfo)
+            val canBeBuilt = tile.improvementFunctions.canBuildImprovement(improvement, civInfo)
             Assert.assertTrue(improvement.name, canBeBuilt)
         }
     }
@@ -100,7 +103,7 @@ class TileImprovementConstructionTests {
         for (improvement in ruleSet.tileImprovements.values) {
             if (!improvement.uniques.contains("Can only be built on [Coastal] tiles")) continue
             civInfo.civName = improvement.uniqueTo ?: "OtherCiv"
-            val canBeBuilt = tile.canBuildImprovement(improvement, civInfo)
+            val canBeBuilt = tile.improvementFunctions.canBuildImprovement(improvement, civInfo)
             Assert.assertTrue(improvement.name, canBeBuilt)
         }
     }
@@ -113,7 +116,7 @@ class TileImprovementConstructionTests {
         for (improvement in ruleSet.tileImprovements.values) {
             if (!improvement.uniques.contains("Can only be built on [Coastal] tiles")) continue
             civInfo.civName = improvement.uniqueTo ?: "OtherCiv"
-            val canBeBuilt = tile.canBuildImprovement(improvement, civInfo)
+            val canBeBuilt = tile.improvementFunctions.canBuildImprovement(improvement, civInfo)
             Assert.assertFalse(improvement.name, canBeBuilt)
         }
     }
@@ -125,7 +128,7 @@ class TileImprovementConstructionTests {
             civInfo.civName = "OtherCiv"
             val tile = getTile()
             tile.setTransients()
-            val canBeBuilt = tile.canBuildImprovement(improvement, civInfo)
+            val canBeBuilt = tile.improvementFunctions.canBuildImprovement(improvement, civInfo)
             Assert.assertFalse(improvement.name, canBeBuilt)
         }
     }
@@ -145,7 +148,7 @@ class TileImprovementConstructionTests {
             tile.baseTerrain = "Plains"
             tile.resource = wrongResource.name
             tile.setTransients()
-            val canBeBuilt = tile.canBuildImprovement(improvement, civInfo)
+            val canBeBuilt = tile.improvementFunctions.canBuildImprovement(improvement, civInfo)
             Assert.assertFalse(improvement.name, canBeBuilt)
         }
     }
@@ -160,7 +163,7 @@ class TileImprovementConstructionTests {
 
         for (improvement in ruleSet.tileImprovements.values) {
             if (!improvement.uniques.contains("Cannot be built on [Bonus resource] tiles")) continue
-            val canBeBuilt = tile.canBuildImprovement(improvement, civInfo)
+            val canBeBuilt = tile.improvementFunctions.canBuildImprovement(improvement, civInfo)
             Assert.assertFalse(improvement.name, canBeBuilt)
         }
     }

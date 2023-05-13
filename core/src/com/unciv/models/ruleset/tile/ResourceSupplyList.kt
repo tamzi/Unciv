@@ -2,7 +2,7 @@ package com.unciv.models.ruleset.tile
 
 import com.unciv.Constants
 import com.unciv.models.ruleset.Ruleset
-import com.unciv.logic.city.IConstruction  // Kdoc only
+import com.unciv.models.ruleset.IConstruction  // Kdoc only
 
 /** Container helps aggregating supply and demand of [resources][ResourceSupply.resource], categorized by [origin][ResourceSupply.origin].
  *
@@ -62,7 +62,7 @@ class ResourceSupplyList(
             add(resourceSupply)
     }
 
-    /** Add entries from a requirements list (as produced by [IConstruction.getResourceRequirements]), expressing requirement as negative supply. */
+    /** Add entries from a requirements list (as produced by [IConstruction.getResourceRequirementsPerTurn]), expressing requirement as negative supply. */
     fun subtractResourceRequirements(resourceRequirements: HashMap<String, Int>, ruleset: Ruleset, origin: String) {
         for ((resourceName, amount) in resourceRequirements) {
             val resource = ruleset.tileResources[resourceName] ?: continue

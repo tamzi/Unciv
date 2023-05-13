@@ -3,7 +3,7 @@ package com.unciv.uniques
 import com.badlogic.gdx.math.Vector2
 import com.unciv.logic.battle.BattleDamage
 import com.unciv.logic.battle.MapUnitCombatant
-import com.unciv.models.ruleset.unique.StateForConditionals
+import com.unciv.logic.civilization.managers.TurnManager
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.testing.GdxTestRunner
 import org.junit.Assert
@@ -25,22 +25,25 @@ class TriggeredUniquesTests {
 
     @Test
     fun testConditionalTimedUniqueIsTriggerable() {
-        val unique = policy.getMatchingUniques(UniqueType.Strength, StateForConditionals.IgnoreConditionals).firstOrNull()
-        Assert.assertTrue("Unique with timed conditional must be triggerable", unique!!.isTriggerable)
+        val unique = policy.uniqueObjects.first{ it.type == UniqueType.Strength }
+        Assert.assertTrue("Unique with timed conditional must be triggerable", unique.isTriggerable)
     }
 
     @Test
     fun testConditionalTimedUniqueStrength() {
         civInfo.policies.adopt(policy, true)
-        val modifiers = BattleDamage.getAttackModifiers(attacker, defender)
+        val modifiers = BattleDamage.getAttackModifiers(attacker, defender, attacker.getTile())
         Assert.assertTrue("Timed Strength should work right after triggering", modifiers.sumValues() == 42)
     }
 
     @Test
     fun testConditionalTimedUniqueExpires() {
         civInfo.policies.adopt(policy, true)
-        civInfo.endTurn()
-        val modifiers = BattleDamage.getAttackModifiers(attacker, defender)
+        // For endTurn to do the part we need, the civ must be alive - have a city or unit,
+        // and right now that attacker is not in the civ's unit list
+        civInfo.units.addUnit(attacker.unit, false)
+        TurnManager(civInfo).endTurn()
+        val modifiers = BattleDamage.getAttackModifiers(attacker, defender, attacker.getTile())
         Assert.assertTrue("Timed Strength should no longer work after endTurn", modifiers.sumValues() == 0)
     }
 }

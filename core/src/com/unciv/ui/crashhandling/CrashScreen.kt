@@ -8,18 +8,18 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
 import com.unciv.UncivGame
-import com.unciv.logic.UncivFiles
+import com.unciv.logic.files.UncivFiles
 import com.unciv.models.ruleset.RulesetCache
+import com.unciv.ui.components.AutoScrollPane
+import com.unciv.ui.components.extensions.addBorder
+import com.unciv.ui.components.extensions.onClick
+import com.unciv.ui.components.extensions.setFontSize
+import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.images.IconTextButton
 import com.unciv.ui.images.ImageGetter
-import com.unciv.ui.popup.ToastPopup
-import com.unciv.ui.utils.AutoScrollPane
-import com.unciv.ui.utils.BaseScreen
-import com.unciv.ui.utils.extensions.addBorder
-import com.unciv.ui.utils.extensions.onClick
-import com.unciv.ui.utils.extensions.setFontSize
-import com.unciv.ui.utils.extensions.toLabel
-import com.unciv.ui.utils.extensions.toNiceString
+import com.unciv.ui.popups.ToastPopup
+import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.utils.Log
 import java.io.PrintWriter
 import java.io.StringWriter
 
@@ -89,7 +89,7 @@ class CrashScreen(val exception: Throwable): BaseScreen() {
 
             --------------------------------
 
-            ${UncivGame.Current.crashReportSysInfo?.getInfo().toString().prependIndentToOnlyNewLines(baseIndent)}
+            ${Log.getSystemInfo().prependIndentToOnlyNewLines(baseIndent)}
 
             --------------------------------
 
@@ -161,12 +161,20 @@ class CrashScreen(val exception: Throwable): BaseScreen() {
     private fun makeActionButtonsTable(): Table {
         val copyButton = IconTextButton("Copy", fontSize = Constants.headingFontSize)
             .onClick {
-                Gdx.app.clipboard.contents = text
-                copied = true
-                ToastPopup(
-                    "Error report copied.",
-                    this@CrashScreen
-                )
+                try {
+                    Gdx.app.clipboard.contents = text
+                    copied = true
+                    ToastPopup(
+                        "Error report copied.",
+                        this@CrashScreen
+                    )
+                } catch(ex:Exception) {
+                    Log.debug("Could not copy to clipboard", ex)
+                    ToastPopup(
+                        "Could not copy to clipboard!",
+                        this@CrashScreen
+                    )
+                }
             }
         val reportButton = IconTextButton("Open Issue Tracker", ImageGetter.getImage("OtherIcons/Link"),
             Constants.headingFontSize

@@ -1,20 +1,21 @@
 package com.unciv.models.ruleset.tile
 
-import com.unciv.logic.civilization.CivilizationInfo
-import com.unciv.logic.map.TileInfo
+import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.map.tile.Tile
 import com.unciv.models.ruleset.Belief
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetStatsObject
 import com.unciv.models.ruleset.unique.UniqueTarget
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.stats.Stats
-import com.unciv.ui.civilopedia.FormattedLine
+import com.unciv.ui.screens.civilopediascreen.FormattedLine
 
 class TileResource : RulesetStatsObject() {
 
     var resourceType: ResourceType = ResourceType.Bonus
     var terrainsCanBeFoundOn: List<String> = listOf()
     var improvement: String? = null
+    /** stats that this resource adds to a tile */
     var improvementStats: Stats? = null
     var revealedBy: String? = null
     var improvedBy: List<String> = listOf()
@@ -91,7 +92,7 @@ class TileResource : RulesetStatsObject() {
             }
         }
 
-        val buildingsThatConsumeThis = ruleset.buildings.values.filter { it.getResourceRequirements().containsKey(name) }
+        val buildingsThatConsumeThis = ruleset.buildings.values.filter { it.getResourceRequirementsPerTurn().containsKey(name) }
         if (buildingsThatConsumeThis.isNotEmpty()) {
             textList += FormattedLine()
             textList += FormattedLine("{Buildings that consume this resource}:")
@@ -100,7 +101,7 @@ class TileResource : RulesetStatsObject() {
             }
         }
 
-        val unitsThatConsumeThis = ruleset.units.values.filter { it.getResourceRequirements().containsKey(name) }
+        val unitsThatConsumeThis = ruleset.units.values.filter { it.getResourceRequirementsPerTurn().containsKey(name) }
         if (unitsThatConsumeThis.isNotEmpty()) {
             textList += FormattedLine()
             textList += FormattedLine("{Units that consume this resource}: ")
@@ -129,11 +130,13 @@ class TileResource : RulesetStatsObject() {
         return getImprovements().contains(improvementName)
     }
 
-    fun getImprovingImprovement(tile: TileInfo, civInfo: CivilizationInfo): String? {
+    fun getImprovingImprovement(tile: Tile, civInfo: Civilization): String? {
         return getImprovements().firstOrNull {
-            tile.canBuildImprovement(civInfo.gameInfo.ruleSet.tileImprovements[it]!!, civInfo)
+            tile.improvementFunctions.canBuildImprovement(civInfo.gameInfo.ruleset.tileImprovements[it]!!, civInfo)
         }
     }
+
+    fun isStockpiled() = hasUnique(UniqueType.Stockpiled)
 
     class DepositAmount {
         var sparse: Int = 1

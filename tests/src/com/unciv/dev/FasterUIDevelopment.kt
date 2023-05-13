@@ -11,23 +11,23 @@ import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.InputListener
 import com.unciv.UncivGame
-import com.unciv.UncivGameParameters
-import com.unciv.logic.UncivFiles
+import com.unciv.logic.files.UncivFiles
 import com.unciv.logic.multiplayer.throttle
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.images.ImageWithCustomSize
-import com.unciv.ui.utils.BaseScreen
-import com.unciv.ui.utils.FontFamilyData
-import com.unciv.ui.utils.Fonts
-import com.unciv.ui.utils.NativeFontImplementation
-import com.unciv.ui.utils.extensions.center
-import com.unciv.ui.utils.extensions.toLabel
-import com.unciv.utils.concurrency.Concurrency
+import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.components.FontFamilyData
+import com.unciv.ui.components.Fonts
+import com.unciv.ui.components.FontImplementation
+import com.unciv.ui.components.extensions.center
+import com.unciv.ui.components.extensions.toLabel
+import com.unciv.utils.Concurrency
 import java.awt.Font
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.time.Duration
 import java.time.Instant
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
 
 /** Creates a basic GDX application that mimics [UncivGame] as closely as possible, starts up fast and shows one UI element, to be returned by [DevElement.createDevElement] */
@@ -61,10 +61,11 @@ object FasterUIDevelopment {
     }
 
     class UIDevGame : Game() {
-        val game = UncivGame(UncivGameParameters(
-            fontImplementation = NativeFontDesktop()
-        ))
+
+        private val game = UncivGame()
+
         override fun create() {
+            Fonts.fontImplementation = FontDesktop()
             UncivGame.Current = game
             UncivGame.Current.files = UncivFiles(Gdx.files)
             game.settings = UncivGame.Current.files.getGeneralSettings()
@@ -96,7 +97,7 @@ object FasterUIDevelopment {
                 override fun mouseMoved(event: InputEvent?, x: Float, y: Float): Boolean {
                     Concurrency.run {
                         throttle(lastPrint, Duration.ofMillis(500), {}) {
-                            println(String.format("x: %.1f\ty: %.1f", x, y))
+                            println(String.format(Locale.US,"x: %.1f\ty: %.1f", x, y))
                         }
                     }
                     return false
@@ -105,7 +106,7 @@ object FasterUIDevelopment {
         }
         private var curBorderZ = 0
         fun addBorder(actor: Actor, color: Color) {
-            val border = ImageWithCustomSize(ImageGetter.getBackground(color))
+            val border = ImageWithCustomSize(skinStrings.getUiBackground("", tintColor = color))
             border.zIndex = curBorderZ++
             val stageCoords = actor.localToStageCoordinates(Vector2(0f, 0f))
             border.x = stageCoords.x - 1
@@ -114,7 +115,7 @@ object FasterUIDevelopment {
             border.height = actor.height + 2
             stage.addActor(border)
 
-            val background = ImageWithCustomSize(ImageGetter.getBackground(clearColor))
+            val background = ImageWithCustomSize(skinStrings.getUiBackground("", tintColor = clearColor))
             background.zIndex = curBorderZ++
             background.x = stageCoords.x
             background.y = stageCoords.y
@@ -126,7 +127,7 @@ object FasterUIDevelopment {
 }
 
 
-class NativeFontDesktop : NativeFontImplementation {
+class FontDesktop : FontImplementation {
     private val font by lazy {
         Font(Fonts.DEFAULT_FONT_FAMILY, Font.PLAIN, Fonts.ORIGINAL_FONT_SIZE.toInt())
     }
@@ -137,6 +138,10 @@ class NativeFontDesktop : NativeFontImplementation {
         val fontMetrics = g.fontMetrics
         g.dispose()
         fontMetrics
+    }
+
+    override fun setFontFamily(fontFamilyData: FontFamilyData, size: Int) {
+        // Empty
     }
 
     override fun getFontSize(): Int {
@@ -168,7 +173,7 @@ class NativeFontDesktop : NativeFontImplementation {
         return pixmap
     }
 
-    override fun getAvailableFontFamilies(): Sequence<FontFamilyData> {
+    override fun getSystemFonts(): Sequence<FontFamilyData> {
         return sequenceOf(FontFamilyData(Fonts.DEFAULT_FONT_FAMILY))
     }
 }

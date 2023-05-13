@@ -10,7 +10,11 @@ New Unciv logo made by u-ndefined on Discord
 
 Base tile icons for the "Fantasy Hex" tileset belong to CuddlyClover @ https://cuddlyclover.itch.io/fantasy-hex-tiles with a few additions by various contributors
 
-Tile improvements and units, as well as the entire HexaRealm tileset, are made by The Bucketeer / @GeneralWadaling and are licenced under Creative Commons 3.0
+Tile improvements and units, as well as the terrains and improvements for HexaRealm tileset, are made by The Bucketeer / @GeneralWadaling and are licenced under Creative Commons 3.0
+
+Units for the [AbsoluteUnits unitset](https://github.com/letstalkaboutdune/AbsoluteUnits) are made by [letstalkaboutdune](https://github.com/letstalkaboutdune) and are licensed under Creative Commons Attribution 4.0 International
+
+Promotional trailer for Steam and other storefronts made by [letstalkaboutdune](https://github.com/letstalkaboutdune)
 
 Unless otherwise specified, all the following are from [the Noun Project](https://thenounproject.com) licenced under either Creative Commons or Public Domain
 
@@ -211,8 +215,15 @@ Unless otherwise specified, all the following are from [the Noun Project](https:
 -   [Village](https://thenounproject.com/search/?q=city+center&i=476338) by Andrey Vasiliev
 -   [pumping station](https://thenounproject.com/search/?q=dike&i=555172) by Peter van Driel for Polder
 -   [Oil Platform](https://thenounproject.com/icon/oil-platform-1364795/) by Georgiana Ionescu for Offshore Platform
+-   [Broom](https://thenounproject.com/icon/broom-1642644/) by Rakhmat Setiawan for Remove Fallout
+-   [Axe](https://www.flaticon.com/ru/free-icon/axe_803805) by Those Icons for Remove Forest and Remove Jungle
+-   [Machete](https://thenounproject.com/icon/machete-36067/) by Robert A. Di Ieso for Remove Marsh
+-   Icon for Remove Railroad by [vegeta1k95](https://github.com/vegeta1k95)
+-   Icon for Remove Road by [vegeta1k95](https://github.com/vegeta1k95)
 
 ### Buildings
+
+- [Building](https://thenounproject.com/icon/building-5386455/) by Aurel for fallback image
 
 #### Ancient Era
 
@@ -433,6 +444,8 @@ Unless otherwise specified, all the following are from [the Noun Project](https:
 
 ### Technologies
 
+- [Lightbulb](https://thenounproject.com/icon/lightbulb-589680/) by Davo Sime for fallback image
+
 #### Ancient
 
 -   [Agriculture](https://thenounproject.com/term/agriculture/4221/) By OCHA Visual Information Unit
@@ -587,6 +600,9 @@ Unless otherwise specified, all the following are from [the Noun Project](https:
     -   [Spear](https://thenounproject.com/term/spear/3930020/) by Firza Alamsyah
     -   [pennant](https://thenounproject.com/term/pennant/194797/) by Sara Jeffries
 -   [Maya civilization](https://thenounproject.com/term/maya-civilization/1715786/) by Olena Panasovska for The Maya
+-   Aztec icon by Kāne, on Unciv Discord server
+-   [Questionmark](https://thenounproject.com/icon/questionmark-4248169/) by YURR.studio for Random nation indicator
+-   [View](https://thenounproject.com/icon/view-4211245/) by Adrien Coquet for Spectator
 
 ### Promotions
 
@@ -604,7 +620,7 @@ Unless otherwise specified, all the following are from [the Noun Project](https:
 -   [Move](https://thenounproject.com/search/?q=move&i=790952) By Sandra for Mobility
 -   [accuracy](https://thenounproject.com/search/?q=accuracy&i=2017348) By vigtographics for Targeting
 -   [location](https://thenounproject.com/search/?q=location&i=2858979) by Humantech for Accuracy
--   [Plane](https://thenounproject.com/search/?q=plane&i=1875398) By Tran Minh Villageois for Interception
+-   [Plane](https://thenounproject.com/search/?q=plane&i=1875398) By Tran Minh Villageois for Interception / Domain Air
 -   [Hammer](https://thenounproject.com/search/?q=hammer&i=854936) by Thengakola for Air Repair
 -   [Hook](https://thenounproject.com/search/?q=hook&i=738678) By Yeong Rong Kim for Boarding Party
 -   [Leaf](https://thenounproject.com/search/?q=Leaf&i=1627477) By Paul Verhulst for Indirect Fire
@@ -617,7 +633,7 @@ Unless otherwise specified, all the following are from [the Noun Project](https:
 -   Icon for Flight Deck is made by [JackRainy](https://github.com/JackRainy)
 -   Icon for Armor Plating is made by [JackRainy](https://github.com/JackRainy)
 -   [Slingshot](https://thenounproject.com/term/slingshot/9106/) by James Keuning for Slinger Withdraw
--   [Anchor](https://thenounproject.com/term/anchor/676586) by Gregor Cresnar for Amphibious
+-   [Anchor](https://thenounproject.com/term/anchor/676586) by Gregor Cresnar for Amphibious / Domain Water
 -   [survival knife](https://thenounproject.com/search/?q=survival&i=2663392) by b faris for Survivalism
 -   [Shamrock](https://thenounproject.com/term/shamrock/358507/) By P Thanga Vignesh for Pictish Courage
 -   [home sweet home](https://thenounproject.com/term/home-sweet-home/3817166/) By Silviu Ojog for Home Sweet Home
@@ -655,7 +671,7 @@ Unless otherwise specified, all the following are from [the Noun Project](https:
 - [Sleep](https://thenounproject.com/search/?q=sleep&i=1760085) By Saeful Muslim
 - [Clockwise](https://thenounproject.com/icon/clockwise-184528/) By Universal Icons (Louis Dawson) for "Wait" icon. The original work has been slightly modified.
 - [Banner](https://thenounproject.com/term/banner/866282/) By Emir Palavan for embarked units
-- [Arrow](https://thenounproject.com/term/arrow/18123/) By uzeir syarief for moving between idle units
+- [Arrow](https://thenounproject.com/icon/arrow-2032227/) By uzeir syarief for moving between idle units, expanders, etc.
 - [Replace](https://thenounproject.com/search/?q=replace&i=17858) By Mike Rowe for switching tiles between cities
 - [Resistance](https://thenounproject.com/term/revolution/1315305/) By HeadsOfBirds
 - [Viking Hat](https://thenounproject.com/search/?q=pillage&i=185405) By my name is mud for pillaging improvements
@@ -664,7 +680,7 @@ Unless otherwise specified, all the following are from [the Noun Project](https:
 - [Aircraft](https://thenounproject.com/search/?q=aircraft&i=1629000) By Tom Fricker for aircraft icon in city button
 - [radar scan](https://thenounproject.com/search/?q=range&i=1500234) By icon 54 for Range
 - [short range radar](https://thenounproject.com/search/?q=air%20range&i=2612731) by Vectors Point for Intercept range
-- [Puppet](https://thenounproject.com/search/?q=puppet&i=285735) By Ben Davis for puppeted cities
+- Puppet by [vegeta1k95](https://github.com/veget1k95) based on [Puppet](https://thenounproject.com/search/?q=puppet&i=285735) by Ben Davis, for puppeted cities
 - [City](https://thenounproject.com/search/?q=city&i=1765370) By Muhajir ila Robbi in the Icon center
 - [Lock](https://thenounproject.com/search/?q=lock&i=3217613) by Vadim Solomakhin for locked tiles
 - [Hourglass](https://thenounproject.com/search/?q=hourglass&i=142268) by I Create Stuff for the 'Turn' icon
@@ -678,14 +694,17 @@ Unless otherwise specified, all the following are from [the Noun Project](https:
 - [Magnifying Glass](https://thenounproject.com/term/magnifying-glass/1311/) by John Caserta for Mod filter
 - [tick](https://thenounproject.com/term/tick/3968142/) by Adrien Coquet on Nation picker
 - [people](https://thenounproject.com/term/people/458671) by Wilson Joseph as base for Civilopedia category Nations
-- [Mountains ](https://thenounproject.com/term/mountains/15616/) by Andrew J. Young as base for Civilopedia category Terrains
+- [Mountains ](https://thenounproject.com/term/mountains/15616/) by Andrew J. Young as base for Civilopedia category Terrains / Domain Land
+- Civilopedia category UnitTypes icon done by [SomeTroglodyte](https://github.com/SomeTroglodyte) from sources cited for Interception, Cavalry and Longbowman
 - [File:Maya.svg](https://en.wikipedia.org/wiki/File:Maya.svg) for Mayan numerals
 - [East side of stela C, Quirigua](https://en.wikipedia.org/wiki/File:East_side_of_stela_C,_Quirigua.PNG) for Mayan calendar symbols
 - [Footprints](https://thenounproject.com/icon/footprints-1393611/) by Abdul Wahhab for movement overlay toggle, slightly modified. Currently unused.
 - Arrows.svg by Intralexical (@will-ca), CC0.
 - [favor](https://thenounproject.com/icon/favor-1029350/) by MICHAEL G BROWN for WLTK marker on City Overview
+- WLTKD by [vegeta1k95](https://github.com/vegeta1k95) based on [favor](https://thenounproject.com/icon/favor-1029350/) by MICHAEL G BROWN for WLTKD status icon
 - [Party](https://thenounproject.com/icon/party-1784941/) by Adrien Coquet for WLTK header on City Overview
 - [Party](https://thenounproject.com/icon/party-2955155/) by Lars Meiertoberens as additional WLKT decoration
+- [spy](https://thenounproject.com/icon/spy-2905374/) by Vectorstall for Spy
 - [turn right](https://thenounproject.com/icon/turn-right-1920867/) by Alice Design for Resource Overview
 - [Tyrannosaurus Rex](https://thenounproject.com/icon/tyrannosaurus-rex-4130976/) by Amethyst Studio for Civilopedia Eras header
 - [Realistic easter day eggs with curvy lines and dots](https://www.freepik.com/free-vector/realistic-easter-day-eggs-with-curvy-lines-dots_6839373.htm) by freepik
@@ -699,53 +718,18 @@ Unless otherwise specified, all the following are from [the Noun Project](https:
 - [Funny christmas vector](https://www.freepik.com/free-vector/reindeer-santa-hat-peeping-out_1430479.htm) by katemangostar
 - [Santa beard vector](https://www.freepik.com/free-vector/positive-santa-ringing-bell-waving-hand_3636285.htm) by katemangostar
 - [Funny christmas vector](https://www.freepik.com/free-vector/snowman-wearing-santa-hat-scarf-mittens_3636292.htm) by katemangostar
-
-- [Circle](https://thenounproject.com/term/circle/1841891/) By Aybige
-- [Arrow](https://thenounproject.com/term/arrow/18123/) By Joe Mortell for movement
-- [Swap](https://thenounproject.com/search/?q=swap&i=1259600) By iconomania for swapping units
-- [Connection](https://thenounproject.com/search/?q=connection&i=1521886) By Travis Avery
-- [Skull](https://thenounproject.com/search/?q=Skull&i=1030702) By Vladimir Belochkin for disbanding units
-- [Crosshair](https://thenounproject.com/search/?q=crosshairs&i=916030) By Bakunetsu Kaito for selecting enemies to attack
-- [City](https://thenounproject.com/search/?q=city&i=571332) By Felix Westphal
-- [Fire](https://thenounproject.com/search/?q=Fire&i=96564) By Lloyd Humphreys for "city being razed" icon
-- [Sleep](https://thenounproject.com/search/?q=sleep&i=1760085) By Saeful Muslim
-- [Banner](https://thenounproject.com/term/banner/866282/) By Emir Palavan for embarked units
-- [Arrow](https://thenounproject.com/term/arrow/18123/) By uzeir syarief for moving between idle units
-- [Replace](https://thenounproject.com/search/?q=replace&i=17858) By Mike Rowe for switching tiles between cities
-- [Resistance](https://thenounproject.com/term/revolution/1315305/) By HeadsOfBirds
-- [Viking Hat](https://thenounproject.com/search/?q=pillage&i=185405) By my name is mud for pillaging improvements
-- [Aim](https://thenounproject.com/search/?q=aim&i=2034920) By Kaviashri for ranged strength
-- [Capitol](https://thenounproject.com/search/?q=capitol&i=160031) By Loren Klein for City-States
-- [Aircraft](https://thenounproject.com/search/?q=aircraft&i=1629000) By Tom Fricker for aircraft icon in city button
-- [radar scan](https://thenounproject.com/search/?q=range&i=1500234) By icon 54 for Range
-- [short range radar](https://thenounproject.com/search/?q=air%20range&i=2612731) by Vectors Point for Intercept range
 - [AirSweep](https://thenounproject.com/icon/jet-134340/) by Creative Stall for Air Sweep icon
-- [Puppet](https://thenounproject.com/search/?q=puppet&i=285735) By Ben Davis for puppeted cities
-- [City](https://thenounproject.com/search/?q=city&i=1765370) By Muhajir ila Robbi in the Icon center
-- [Lock](https://thenounproject.com/search/?q=lock&i=3217613) by Vadim Solomakhin for locked tiles
-- [Hourglass](https://thenounproject.com/search/?q=hourglass&i=142268) by I Create Stuff for the 'Turn' icon
-- [Shield](https://thenounproject.com/search/?q=shield&i=813568) by Gregor Cresnar for Religious Strength
-- [skill sword flame](https://thenounproject.com/term/skill-sword-flame/2360212/) by Maxicons) for Remove Heresy
-- [Pencil](https://thenounproject.com/search/?q=pencil&i=4195852) by Muhamad Aldi Maulana for Enter Text Prompt Button / Pencil
-- [Parchment](https://thenounproject.com/term/parchment/1516378/) by hans draiman for Cultured City-States
-- [connection](https://thenounproject.com/term/connection/1365233/) by Popular for Mercantile City-States
-- [crossed sword](https://thenounproject.com/term/crossed-sword/2427559/) by ProSymbols for Militaristic City-States
-- [ship helm](https://thenounproject.com/term/ship-helm/2170591/) by Vectors Market for Maritime City-States
-- [Magnifying Glass](https://thenounproject.com/term/magnifying-glass/1311/) by John Caserta for Mod filter
-- [tick](https://thenounproject.com/term/tick/3968142/) by Adrien Coquet on Nation picker
-- [people](https://thenounproject.com/term/people/458671) by Wilson Joseph as base for Civilopedia category Nations
-- [Mountains ](https://thenounproject.com/term/mountains/15616/) by Andrew J. Young as base for Civilopedia category Terrains
-- [File:Maya.svg](https://en.wikipedia.org/wiki/File:Maya.svg) for Mayan numerals
-- [East side of stela C, Quirigua](https://en.wikipedia.org/wiki/File:East_side_of_stela_C,_Quirigua.PNG) for Mayan calendar symbols
-- [Footprints](https://thenounproject.com/icon/footprints-1393611/) by Abdul Wahhab for movement overlay toggle, slightly modified. Currently unused.
-- Arrows.svg by Intralexical (@will-ca), CC0.
-- [favor](https://thenounproject.com/icon/favor-1029350/) by MICHAEL G BROWN for WLTK marker on City Overview
-- [Party](https://thenounproject.com/icon/party-1784941/) by Adrien Coquet for WLTK header on City Overview
-- [Party](https://thenounproject.com/icon/party-2955155/) by Lars Meiertoberens as additional WLKT decoration
-- [turn right](https://thenounproject.com/icon/turn-right-1920867/) by Alice Design for Resource Overview
-- [Tyrannosaurus Rex](https://thenounproject.com/icon/tyrannosaurus-rex-4130976/) by Amethyst Studio for Civilopedia Eras header
 - [Timer](https://www.flaticon.com/free-icons/timer) created by Gregor Cresnar Premium - Flaticon
+- [Political Science](https://www.flaticon.com/premium-icon/political-science_5403775) created by Hilmy Abiyyu A. - Flaticon
 - [Question](https://thenounproject.com/icon/question-1157126/) created by Aneeque Ahmed for Question Icon
+- [Trade](https://www.flaticon.com/free-icon/trade_4257019) created by Smashicons for Conduct Trade Mission
+- [Nothing](https://www.flaticon.com/free-icon/nothing_5084125) created by Freepik for Nothing construction process
+- Icon for Unique created by [vegeta1k95](https://github.com/vegeta1k95)
+- [Transform] created by letstalkaboutdune
+- [Swords](https://thenounproject.com/icon/swords-1580316/) created by Muhajir ila Robbi for Blockaded tile marker
+- [Keyboard](https://thenounproject.com/icon/keyboard-2685534/) by Twenty Foo Studio for Options Keys
+- [charts](https://thenounproject.com/icon/charts-2312023/) by Srinivas Agra (gimped to appear bolder) for the Charts page
+
 
 ### Main menu
 
@@ -773,9 +757,10 @@ Sounds are from FreeSound.org unless otherwise noted and are either Creative Com
 - [Tank reload](https://freesound.org/people/KieranKeegan/sounds/418882/) By KieranKeegan as 'setup' for siege unit setup
 - [Scribble_short](https://freesound.org/people/waldram/sounds/257518/) By waldram as 'policy' for adopting policies
 - [Hit Impact](https://freesound.org/people/Mrguff/sounds/369711/) by Mrguff as 'throw' for catapult & trebuchet attacks
-- [Slingshot fly by 2](https://freesound.org/people/saturdaysoundguy/sounds/394186/) by saturdaysoundguy as 'arrow' for arrow attacks
+- [Arrow Impact](https://pixabay.com/sound-effects/arrow-impact-87260/) by Twisted Euphoria on Pixabay as 'arrow' for arrow attacks (Pixabay License)
+- [Crossbow Firing](https://pixabay.com/sound-effects/crossbow-firing-95020/) by GameWithBepis on Pixabay as 'crossbow' for crossbow attacks (Pixabay License)
 - [Metal hit slide](https://freesound.org/people/orginaljun/sounds/149102/) by orginaljun as 'nonmetalhit' for pre-metal melee sounds
-- [klick_anlauf](https://freesound.org/people/jascha/sounds/16576/) By jascha as 'metalhit' for metal melee sounds
+- [wpn 1 generic](https://pixabay.com/sound-effects/wpn-1-generic-100027/) By SlavicMagic on Pixabay as 'metalhit' for metal melee sounds (Pixabay License)
 - [Horse's whinny](https://freesound.org/people/Kubuzz/sounds/347036/) By Kubuzz as 'horse' for cavalry attack sounds
 - [machine gun 001 - loop](https://freesound.org/people/pgi/sounds/212602/) By pgi as 'machinegun' for machine gun attack sound
 - [uzzi_full_single](https://freesound.org/people/Deganoth/sounds/348685/) By Deganoth as 'shot' for bullet attacks
@@ -815,3 +800,12 @@ Sounds are from FreeSound.org unless otherwise noted and are either Creative Com
 
 The following music is from https://filmmusic.io
 "[Thatched Villagers](https://incompetech.filmmusic.io/song/4481-thatched-villagers)" by Kevin MacLeod (https://incompetech.com)
+
+## Trailer audio
+
+The following audio is from https://pixabay.com/ [Pixabay License](https://pixabay.com/service/terms/#license)
+-   [Beyond New Horizons - Free Epic Viking Medieval Soundtrack](https://pixabay.com/music/main-title-beyond-new-horizons-free-epic-viking-medieval-soundtrack-22081/) by GioeleFazzeri for background music
+-   [Beep 6](https://pixabay.com/sound-effects/beep-6-96243/) by Eponn for beep in Cross-Platform Play section
+-   [Cinematic Boom](https://pixabay.com/sound-effects/cinematic-boom-6872/) by Rizzard for final boom
+-   [Cymbal Swell 2](https://pixabay.com/sound-effects/cymbal-swell-2-74766/) by rubberduckie for cymbal swells
+-   [hit of orchestral cymbals and bass drum](https://pixabay.com/sound-effects/hit-of-orchestral-cymbals-and-bass-drum-14471/) by Selector for intro crash

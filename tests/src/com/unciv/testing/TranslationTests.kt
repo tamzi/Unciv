@@ -2,11 +2,20 @@
 package com.unciv.testing
 
 import com.badlogic.gdx.Gdx
+import com.unciv.Constants
 import com.unciv.UncivGame
 import com.unciv.models.metadata.GameSettings
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
-import com.unciv.models.translations.*
+import com.unciv.models.stats.Stats
+import com.unciv.models.translations.TranslationEntry
+import com.unciv.models.translations.TranslationFileWriter
+import com.unciv.models.translations.Translations
+import com.unciv.models.translations.getPlaceholderParametersIgnoringLowerLevelBraces
+import com.unciv.models.translations.getPlaceholderText
+import com.unciv.models.translations.squareBraceRegex
+import com.unciv.models.translations.tr
+import com.unciv.utils.Log
 import com.unciv.utils.debug
 import org.junit.Assert
 import org.junit.Before
@@ -29,7 +38,7 @@ class TranslationTests {
             override fun write(b: Int) {}
         }))
         translations.readAllLanguagesTranslation()
-        RulesetCache.loadRulesets()
+        RulesetCache.loadRulesets(noMods = true)
         ruleset = RulesetCache.getVanillaRuleset()
         System.setOut(outputChannel)
     }
@@ -86,8 +95,8 @@ class TranslationTests {
     fun allTranslationsHaveCorrectPlaceholders() {
         var allTranslationsHaveCorrectPlaceholders = true
         val languages = translations.getLanguages()
-        for (key in translations.keys) {
-            val translationEntry = translations[key]!!.entry
+        for ((key, translation) in translations) {
+            val translationEntry = translation.entry
             val placeholders = squareBraceRegex.findAll(translationEntry)
                     .map { it.value }.toList()
             for (language in languages) {
@@ -110,9 +119,9 @@ class TranslationTests {
     @Test
     fun allPlaceholderKeysMatchEntry() {
         var allPlaceholderKeysMatchEntry = true
-        for (key in translations.keys) {
+        for ((key, translation) in translations) {
             if (!key.contains('[') || key.contains('<')) continue
-            val translationEntry = translations[key]!!.entry
+            val translationEntry = translation.entry
             val keyFromEntry = translationEntry.replace(squareBraceRegex, "[]")
             if (key != keyFromEntry) {
                 allPlaceholderKeysMatchEntry = false
@@ -199,7 +208,7 @@ class TranslationTests {
                     translationEntry.entry.tr()
                 } catch (ex: Exception) {
                     allWordsTranslatedCorrectly = false
-                    println("Crashed when translating ${translationEntry.entry} to $language")
+                    Log.error("Crashed when translating ${translationEntry.entry} to $language", ex)
                 }
             }
         }
@@ -257,8 +266,8 @@ class TranslationTests {
         UncivGame.Current.settings = GameSettings()
 
         fun addTranslation(original:String, result:String){
-            UncivGame.Current.translations[original.getPlaceholderText()] =TranslationEntry(original)
-                .apply { this["English"] = result }
+            UncivGame.Current.translations[original.getPlaceholderText()] = TranslationEntry(original)
+                .apply { this[Constants.english] = result }
         }
         addTranslation("The brother of [person]", "The sibling of [person]")
         Assert.assertEquals("The sibling of bob", "The brother of [bob]".tr())
@@ -279,6 +288,14 @@ class TranslationTests {
         // Reminder: "The brother of [[my [best friend]] and [[America]'s greatest [Dad]]]"
         Assert.assertEquals("The sibling of mine own closest ally and indeed the greatest Father in The old British colonies",
             superNestedString.tr())
+    }
+
+    @Test
+    fun isStatsRecognizesStatsIncludingStatCharacter(){
+        UncivGame.Current = UncivGame()
+        UncivGame.Current.settings = GameSettings()
+
+        Assert.assertTrue(Stats.isStats(Stats(1f,2f,3f).toStringForNotifications()))
     }
 
 

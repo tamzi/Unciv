@@ -2,39 +2,49 @@ package com.unciv.logic.map.mapgenerator
 
 import com.unciv.Constants
 import com.unciv.UncivGame
-import com.unciv.logic.HexMath
-import com.unciv.logic.civilization.CivilizationInfo
+import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.map.HexMath
 import com.unciv.logic.map.MapParameters
 import com.unciv.logic.map.MapShape
 import com.unciv.logic.map.MapType
-import com.unciv.logic.map.Perlin
-import com.unciv.logic.map.TileInfo
 import com.unciv.logic.map.TileMap
+import com.unciv.logic.map.tile.Tile
 import com.unciv.models.Counter
 import com.unciv.models.metadata.GameParameters
-import com.unciv.models.metadata.GameSetupInfo
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.tile.Terrain
 import com.unciv.models.ruleset.tile.TerrainType
 import com.unciv.models.ruleset.unique.Unique
 import com.unciv.models.ruleset.unique.UniqueType
-import com.unciv.ui.mapeditor.MapGeneratorSteps
-import com.unciv.ui.utils.extensions.toNiceString
+import com.unciv.ui.screens.mapeditorscreen.MapGeneratorSteps
+import com.unciv.ui.screens.mapeditorscreen.TileInfoNormalizer
 import com.unciv.utils.Log
 import com.unciv.utils.debug
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sign
+import kotlin.math.sqrt
 import kotlin.math.ulp
 import kotlin.random.Random
 
 
-class MapGenerator(val ruleset: Ruleset) {
+class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineScope? = null) {
+
     companion object {
         private const val consoleTimings = false
+    }
+
+    private val landTerrainName =
+            MapLandmassGenerator.getInitializationTerrain(ruleset, TerrainType.Land)
+    private val waterTerrainName: String = try {
+        MapLandmassGenerator.getInitializationTerrain(ruleset, TerrainType.Water)
+    } catch (_: Exception) {
+        landTerrainName
     }
 
     private var randomness = MapGenerationRandomness()
@@ -74,7 +84,7 @@ class MapGenerator(val ruleset: Ruleset) {
         getMatchingUniques(UniqueType.TileGenerationConditions)
             .map { unique -> TerrainOccursRange(this, unique) }
 
-    fun generateMap(mapParameters: MapParameters, gameParameters: GameParameters = GameParameters(), civilizations: List<CivilizationInfo> = emptyList()): TileMap {
+    fun generateMap(mapParameters: MapParameters, gameParameters: GameParameters = GameParameters(), civilizations: List<Civilization> = emptyList()): TileMap {
         val mapSize = mapParameters.mapSize
         val mapType = mapParameters.type
 
@@ -134,17 +144,17 @@ class MapGenerator(val ruleset: Ruleset) {
         if (civilizations.isNotEmpty()) {
             val regions = MapRegions(ruleset)
             runAndMeasure("generateRegions") {
-                regions.generateRegions(map, civilizations.count { ruleset.nations[it.civName]!!.isMajorCiv() })
+                regions.generateRegions(map, civilizations.count { ruleset.nations[it.civName]!!.isMajorCiv })
             }
             runAndMeasure("assignRegions") {
-                regions.assignRegions(map, civilizations.filter { ruleset.nations[it.civName]!!.isMajorCiv() }, gameParameters)
+                regions.assignRegions(map, civilizations.filter { ruleset.nations[it.civName]!!.isMajorCiv }, gameParameters)
             }
             // Natural wonders need to go before most resources since there is a minimum distance
             runAndMeasure("NaturalWonderGenerator") {
                 NaturalWonderGenerator(ruleset, randomness).spawnNaturalWonders(map)
             }
             runAndMeasure("placeResourcesAndMinorCivs") {
-                regions.placeResourcesAndMinorCivs(map, civilizations.filter { ruleset.nations[it.civName]!!.isCityState() })
+                regions.placeResourcesAndMinorCivs(map, civilizations.filter { ruleset.nations[it.civName]!!.isCityState })
             }
         } else {
             runAndMeasure("NaturalWonderGenerator") {
@@ -158,6 +168,11 @@ class MapGenerator(val ruleset: Ruleset) {
         runAndMeasure("spreadAncientRuins") {
             spreadAncientRuins(map)
         }
+
+        // Map generation may generate incompatible terrain/feature combinations
+        for (tile in map.values)
+            TileInfoNormalizer.normalizeToRuleset(tile, ruleset)
+
         return map
     }
 
@@ -190,6 +205,7 @@ class MapGenerator(val ruleset: Ruleset) {
 
 
     private fun runAndMeasure(text: String, action: ()->Unit) {
+        if (coroutineScope?.isActive == false) return
         if (!consoleTimings) return action()
         val startNanos = System.nanoTime()
         action()
@@ -204,7 +220,7 @@ class MapGenerator(val ruleset: Ruleset) {
                     .firstOrNull { tile.isAdjacentTo(it.params[1]) }
                     ?: continue
             val terrain = ruleset.terrains[conversionUnique.params[0]] ?: continue
-            if (!terrain.occursOn.contains(tile.getLastTerrain().name)) continue
+            if (!terrain.occursOn.contains(tile.lastTerrain.name)) continue
 
             if (terrain.type == TerrainType.TerrainFeature)
                 tile.addTerrainFeature(terrain.name)
@@ -219,27 +235,25 @@ class MapGenerator(val ruleset: Ruleset) {
             //define lakes
             val waterTiles = map.values.filter { it.isWater }.toMutableList()
 
-            val tilesInArea = ArrayList<TileInfo>()
-            val tilesToCheck = ArrayList<TileInfo>()
+            val tilesInArea = ArrayList<Tile>()
+            val tilesToCheck = ArrayList<Tile>()
 
             val maxLakeSize = ruleset.modOptions.constants.maxLakeSize
 
             while (waterTiles.isNotEmpty()) {
-                val initialWaterTile = waterTiles.random(randomness.RNG)
+                val initialWaterTile = waterTiles.removeFirst()
                 tilesInArea += initialWaterTile
                 tilesToCheck += initialWaterTile
-                waterTiles -= initialWaterTile
 
                 // Floodfill to cluster water tiles
                 while (tilesToCheck.isNotEmpty()) {
-                    val tileWeAreChecking = tilesToCheck.random(randomness.RNG)
+                    val tileWeAreChecking = tilesToCheck.removeFirst()
                     for (vector in tileWeAreChecking.neighbors
                         .filter { !tilesInArea.contains(it) and waterTiles.contains(it) }) {
                         tilesInArea += vector
                         tilesToCheck += vector
                         waterTiles -= vector
                     }
-                    tilesToCheck -= tileWeAreChecking
                 }
 
                 if (tilesInArea.size <= maxLakeSize) {
@@ -275,7 +289,7 @@ class MapGenerator(val ruleset: Ruleset) {
                 suitableTiles,
                 map.mapParameters.mapSize.radius)
         for (tile in locations)
-            tile.improvement = ruinsEquivalents.keys.random()
+            tile.changeImprovement(ruinsEquivalents.keys.random())
     }
 
     private fun spreadResources(tileMap: TileMap) {
@@ -302,7 +316,7 @@ class MapGenerator(val ruleset: Ruleset) {
             val suitableTiles = candidateTiles
                     .filterNot { it.baseTerrain == Constants.snow && it.isHill() }
                     .filter { it.resource == null
-                            && resource.terrainsCanBeFoundOn.contains(it.getLastTerrain().name) }
+                            && resource.terrainsCanBeFoundOn.contains(it.lastTerrain.name) }
 
             val locations = randomness.chooseSpreadOutLocations(resourcesPerType, suitableTiles, mapRadius)
 
@@ -321,7 +335,7 @@ class MapGenerator(val ruleset: Ruleset) {
         val suitableTiles = tileMap.values
                 .filterNot { it.baseTerrain == Constants.snow && it.isHill() }
                 .filter { it.resource == null && it.neighbors.none { neighbor -> neighbor.isNaturalWonder() }
-                        && resourcesOfType.any { r -> r.terrainsCanBeFoundOn.contains(it.getLastTerrain().name) } }
+                        && resourcesOfType.any { r -> r.terrainsCanBeFoundOn.contains(it.lastTerrain.name) } }
         val numberOfResources = tileMap.values.count { it.isLand && !it.isImpassible() } *
                 tileMap.mapParameters.resourceRichness
         val locations = randomness.chooseSpreadOutLocations(numberOfResources.toInt(), suitableTiles, mapRadius)
@@ -330,7 +344,7 @@ class MapGenerator(val ruleset: Ruleset) {
 
         for (tile in locations) {
             val possibleResources = resourcesOfType
-                    .filter { it.terrainsCanBeFoundOn.contains(tile.getLastTerrain().name) }
+                    .filter { it.terrainsCanBeFoundOn.contains(tile.lastTerrain.name) }
             if (possibleResources.isEmpty()) continue
             val resourceWithLeastAssignments = possibleResources.minByOrNull { resourceToNumber[it.name]!! }!!
             resourceToNumber.add(resourceWithLeastAssignments.name, 1)
@@ -486,7 +500,7 @@ class MapGenerator(val ruleset: Ruleset) {
         val scale = tileMap.mapParameters.tilesPerBiomeArea.toDouble()
         val temperatureExtremeness = tileMap.mapParameters.temperatureExtremeness
         val temperatureShift = tileMap.mapParameters.temperatureShift
-        val humidityShift = if (temperatureShift > 0) -temperatureShift else 0f
+        val humidityShift = if (temperatureShift > 0) -temperatureShift / 2 else 0f
 
         // List is OK here as it's only sequentially scanned
         val limitsMap: List<TerrainOccursRange> =
@@ -507,9 +521,19 @@ class MapGenerator(val ruleset: Ruleset) {
             val humidityRandom = randomness.getPerlinNoise(tile, humiditySeed, scale = scale, nOctaves = 1)
             val humidity = ((humidityRandom + 1.0) / 2.0 + humidityShift).coerceIn(0.0..1.0)
 
+            val expectedTemperature = if (tileMap.mapParameters.shape === MapShape.flatEarth) {
+                // Flat Earth uses radius because North is center of map
+                val radius = getTileRadius(tile, tileMap)
+                val radiusTemperature = getTemperatureAtRadius(radius)
+                radiusTemperature
+            } else {
+                // Globe Earth uses latitude because North is top of map
+                val latitudeTemperature = 1.0 - 2.0 * abs(tile.latitude) / tileMap.maxLatitude
+                latitudeTemperature
+            }
+
             val randomTemperature = randomness.getPerlinNoise(tile, temperatureSeed, scale = scale, nOctaves = 1)
-            val latitudeTemperature = 1.0 - 2.0 * abs(tile.latitude) / tileMap.maxLatitude
-            var temperature = (5.0 * latitudeTemperature + randomTemperature) / 6.0
+            var temperature = (5.0 * expectedTemperature + randomTemperature) / 6.0
             temperature = abs(temperature).pow(1.0 - temperatureExtremeness) * temperature.sign
             temperature = (temperature + temperatureShift).coerceIn(-1.0..1.0)
 
@@ -536,8 +560,69 @@ class MapGenerator(val ruleset: Ruleset) {
                 tile.baseTerrain = firstLandTerrain.name
                 debug("applyHumidityAndTemperature: No terrain found for temperature: %s, humidity: %s", temperature, humidity)
             }
+            tile.humidity = humidity
+            tile.temperature = temperature
             tile.setTerrainTransients()
         }
+    }
+
+    private fun getTileRadius(tile: Tile, tileMap: TileMap): Float {
+        val latitudeRatio = abs(tile.latitude) / tileMap.maxLatitude
+        val longitudeRatio = abs(tile.longitude) / tileMap.maxLongitude
+        return sqrt(latitudeRatio.pow(2) + longitudeRatio.pow(2))
+    }
+
+    private fun getTemperatureAtRadius(radius: Float): Double {
+        /*
+        Radius is in the range of 0.0 to 1.0
+        Temperature is in the range of -1.0 to 1.0
+
+        Radius of 0.0 (arctic) is -1.0 (cold)
+        Radius of 0.25 (mid North) is 0.0 (temperate)
+        Radius of 0.5 (equator) is 1.0 (hot)
+        Radius of 0.75 (mid South) is 0.0 (temperate)
+        Radius of 1.0 (antarctic) is -1.0 (cold)
+
+        Scale the radius range to the temperature range
+        */
+        return when {
+            /*
+            North Zone
+            Starts cold at arctic and gets hotter as it goes South to equator
+            x1 is set to 0.05 instead of 0.0 to offset the ice in the center of the map
+            */
+            radius < 0.5 -> scaleToRange(0.05, 0.5, -1.0, 1.0, radius)
+
+            /*
+            South Zone
+            Starts hot at equator and gets colder as it goes South to antarctic
+            x2 is set to 0.95 instead of 1.0 to offset the ice on the edges of the map
+            */
+            radius > 0.5 -> scaleToRange(0.5, 0.95, 1.0, -1.0, radius)
+
+            /*
+            Equator
+            Always hot
+            radius == 0.5
+            */
+            else -> 1.0
+        }
+    }
+
+    /**
+     * @x1 start of the original range
+     * @x2 end of the original range
+     * @y1 start of the new range
+     * @y2 end of the new range
+     * @value value to be scaled from the original range to the new range
+     *
+     * @returns value in new scale
+     * special thanks to @letstalkaboutdune for the math
+     */
+    private fun scaleToRange(x1: Double, x2: Double, y1: Double, y2: Double, value: Float): Double {
+        val gain = (y2 - y1) / (x2 - x1)
+        val offset = y2 - (gain * x2)
+        return (gain * value) + offset
     }
 
     /**
@@ -550,11 +635,20 @@ class MapGenerator(val ruleset: Ruleset) {
         val candidateTerrains = vegetationTerrains.flatMap{ it.occursOn }
         // Checking it.baseTerrain in candidateTerrains to make sure forest does not spawn on desert hill
         for (tile in tileMap.values.asSequence().filter { it.baseTerrain in candidateTerrains
-                && it.getLastTerrain().name in candidateTerrains }) {
+                && it.lastTerrain.name in candidateTerrains }) {
+
             val vegetation = (randomness.getPerlinNoise(tile, vegetationSeed, scale = 3.0, nOctaves = 1) + 1.0) / 2.0
 
             if (vegetation <= tileMap.mapParameters.vegetationRichness) {
-                val randomVegetation = vegetationTerrains.filter { it.occursOn.contains(tile.getLastTerrain().name) }.random(randomness.RNG)
+                val possibleVegetation = vegetationTerrains.filter { vegetationTerrain ->
+                    vegetationTerrain.occursOn.contains(tile.lastTerrain.name)
+                            && vegetationTerrain.getMatchingUniques(UniqueType.TileGenerationConditions).none {
+                            tile.temperature!! < it.params[0].toDouble() || tile.temperature!! > it.params[1].toDouble()
+                                    || tile.humidity!! < it.params[2].toDouble() || tile.humidity!! > it.params[3].toDouble()
+                        }
+                }
+                if (possibleVegetation.isEmpty()) continue
+                val randomVegetation = possibleVegetation.random(randomness.RNG)
                 tile.addTerrainFeature(randomVegetation.name)
             }
         }
@@ -598,6 +692,11 @@ class MapGenerator(val ruleset: Ruleset) {
                     -1f, ruleset.modOptions.constants.spawnIceBelowTemperature,
                     0f, 1f))
             }.toList()
+
+        if (tileMap.mapParameters.shape === MapShape.flatEarth) {
+            spawnFlatEarthIceWalls(tileMap, iceEquivalents)
+        }
+
         if (iceEquivalents.isEmpty()) return
 
         tileMap.setTransients(ruleset)
@@ -610,15 +709,179 @@ class MapGenerator(val ruleset: Ruleset) {
             val latitudeTemperature = 1.0 - 2.0 * abs(tile.latitude) / tileMap.maxLatitude
             var temperature = ((latitudeTemperature + randomTemperature) / 2.0)
             temperature = abs(temperature).pow(1.0 - tileMap.mapParameters.temperatureExtremeness) * temperature.sign
+            temperature = (temperature + tileMap.mapParameters.temperatureShift).coerceIn(-1.0..1.0)
 
             val candidates = iceEquivalents
                 .filter {
                     it.matches(temperature, 1.0) &&
-                    tile.getLastTerrain().name in it.terrain.occursOn
+                    tile.lastTerrain.name in it.terrain.occursOn
                 }.map { it.terrain.name }
             when (candidates.size) {
                 1 -> tile.addTerrainFeature(candidates.first())
                 !in 0..1 -> tile.addTerrainFeature(candidates.random(randomness.RNG))
+            }
+        }
+    }
+
+    private fun spawnFlatEarthIceWalls(tileMap: TileMap, iceEquivalents: List<TerrainOccursRange>) {
+        val iceCandidates = iceEquivalents.filter {
+            it.matches(-1.0, 1.0)
+        }.map {
+            it.terrain.name
+        }
+        val iceTerrainName =
+                when (iceCandidates.size) {
+                    1 -> iceCandidates.first()
+                    !in 0..1 -> iceCandidates.random(randomness.RNG)
+                    else -> null
+                }
+
+        val snowCandidates = ruleset.terrains.values.asSequence().filter {
+            it.type == TerrainType.Land
+        }.flatMap { terrain ->
+            val conditions = terrain.getGenerationConditions()
+            if (conditions.any()) conditions
+            else sequenceOf(
+                TerrainOccursRange(
+                    terrain,
+                    -1f, ruleset.modOptions.constants.spawnIceBelowTemperature,
+                    0f, 1f
+                )
+            )
+        }.toList().filter {
+            it.matches(-1.0, 1.0)
+        }.map {
+            it.terrain.name
+        }
+        val snowTerrainName =
+                when (snowCandidates.size) {
+                    1 -> snowCandidates.first()
+                    !in 0..1 -> snowCandidates.random(randomness.RNG)
+                    else -> null
+                }
+
+        val mountainTerrainName =
+                ruleset.terrains.values.firstOrNull { it.hasUnique(UniqueType.OccursInChains) }?.name
+
+        val bestArcticTileName = when {
+            iceTerrainName != null -> iceTerrainName
+            snowTerrainName != null -> snowTerrainName
+            mountainTerrainName != null -> mountainTerrainName
+            else -> null
+        }
+
+        val arcticTileNameList =
+                arrayOf(iceTerrainName, snowTerrainName, mountainTerrainName).filterNotNull()
+
+        // Skip the tile loop if nothing can be done in it
+        if (bestArcticTileName == null && arcticTileNameList.isEmpty()) return
+
+        // Flat Earth needs a 1 tile wide perimeter of ice/mountain/snow and a 2 radius cluster of ice in the center.
+        for (tile in tileMap.values) {
+            val isCenterTile = tile.latitude == 0f && tile.longitude == 0f
+            val isEdgeTile = tile.neighbors.count() < 6
+
+            // Make center tiles ice or snow or mountain depending on availability
+            if (isCenterTile && bestArcticTileName != null) {
+                spawnFlatEarthCenterIceWall(tile, bestArcticTileName, iceTerrainName, mountainTerrainName)
+            }
+
+            // Make edge tiles randomly ice or snow or mountain if available
+            if (isEdgeTile && arcticTileNameList.isNotEmpty()) {
+                spawnFlatEarthEdgeIceWall(tile, arcticTileNameList, iceTerrainName, mountainTerrainName)
+            }
+        }
+    }
+
+    private fun spawnFlatEarthCenterIceWall(tile: Tile, bestArcticTileName: String, iceTerrainName: String?, mountainTerrainName: String?) {
+        // Spawn ice on center tile
+        if (bestArcticTileName == iceTerrainName) {
+            tile.baseTerrain = waterTerrainName
+            tile.removeTerrainFeatures()
+            tile.addTerrainFeature(iceTerrainName)
+        } else if (iceTerrainName != null && bestArcticTileName != mountainTerrainName) {
+            tile.baseTerrain = bestArcticTileName // snow (or a mod's equivalent)
+            tile.removeTerrainFeatures()
+            tile.addTerrainFeature(iceTerrainName)
+        } else {
+            tile.baseTerrain = bestArcticTileName // mountain (or a mod's equivalent)
+            tile.removeTerrainFeatures()
+        }
+
+        // Spawn circle of ice around center tile
+        for (neighbor in tile.neighbors) {
+            if (bestArcticTileName == iceTerrainName) {
+                neighbor.baseTerrain = waterTerrainName
+                neighbor.removeTerrainFeatures()
+                neighbor.addTerrainFeature(iceTerrainName)
+            } else if (iceTerrainName != null && bestArcticTileName != mountainTerrainName) {
+                neighbor.baseTerrain = bestArcticTileName // snow (or a mod's equivalent)
+                neighbor.removeTerrainFeatures()
+                neighbor.addTerrainFeature(iceTerrainName)
+            } else {
+                neighbor.baseTerrain = bestArcticTileName // mountain (or a mod's equivalent)
+                neighbor.removeTerrainFeatures()
+            }
+
+            // Spawn partial circle of ice around circle of ice
+            for (neighbor2 in neighbor.neighbors) {
+                if (randomness.RNG.nextDouble() < 0.75) {
+                    // Do nothing most of the time at random.
+                } else if (bestArcticTileName == iceTerrainName) {
+                    neighbor2.baseTerrain = waterTerrainName
+                    neighbor2.removeTerrainFeatures()
+                    neighbor2.addTerrainFeature(iceTerrainName)
+                } else if (iceTerrainName != null && bestArcticTileName != mountainTerrainName) {
+                    neighbor2.baseTerrain = bestArcticTileName // snow (or a mod's equivalent)
+                    neighbor2.removeTerrainFeatures()
+                    neighbor2.addTerrainFeature(iceTerrainName)
+                } else {
+                    neighbor2.baseTerrain = bestArcticTileName // mountain (or a mod's equivalent)
+                    neighbor2.removeTerrainFeatures()
+                }
+            }
+        }
+    }
+
+    private fun spawnFlatEarthEdgeIceWall(tile: Tile, arcticTileNameList: List<String>, iceTerrainName: String?, mountainTerrainName: String?) {
+        // Select one of the arctic tiles at random
+        val arcticTileName = when (arcticTileNameList.size) {
+            1 -> arcticTileNameList.first()
+            else -> arcticTileNameList.random(randomness.RNG)
+        }
+
+        // Spawn arctic tiles on edge tile
+        if (arcticTileName == iceTerrainName) {
+            tile.baseTerrain = waterTerrainName
+            tile.removeTerrainFeatures()
+            tile.addTerrainFeature(iceTerrainName)
+        } else if (iceTerrainName != null && arcticTileName != mountainTerrainName) {
+            tile.baseTerrain = arcticTileName // snow (or a mod's equivalent)
+            tile.removeTerrainFeatures()
+            tile.addTerrainFeature(iceTerrainName)
+        } else {
+            tile.baseTerrain = arcticTileName // mountain (or a mod's equivalent)
+            tile.removeTerrainFeatures()
+        }
+
+        // Spawn partial circle of arctic tiles next to the edge
+        for (neighbor in tile.neighbors) {
+            val neighborIsEdgeTile = neighbor.neighbors.count() < 6
+            if (neighborIsEdgeTile) {
+                // Do not redo edge tile. It is already done.
+            } else if (randomness.RNG.nextDouble() < 0.75) {
+                // Do nothing most of the time at random.
+            } else if (arcticTileName == iceTerrainName) {
+                neighbor.baseTerrain = waterTerrainName
+                neighbor.removeTerrainFeatures()
+                neighbor.addTerrainFeature(iceTerrainName)
+            } else if (iceTerrainName != null && arcticTileName != mountainTerrainName) {
+                neighbor.baseTerrain = arcticTileName // snow (or a mod's equivalent)
+                neighbor.removeTerrainFeatures()
+                neighbor.addTerrainFeature(iceTerrainName)
+            } else {
+                neighbor.baseTerrain = arcticTileName // mountain (or a mod's equivalent)
+                neighbor.removeTerrainFeatures()
             }
         }
     }
@@ -633,6 +896,8 @@ class MapGenerationRandomness {
 
     /**
      * Generates a perlin noise channel combining multiple octaves
+     * Default settings generate mostly within [-0.55, 0.55], but clustered around 0.0
+     * About 28% are < -0.1 and 28% are > 0.1
      *
      * @param tile Source for x / x coordinates.
      * @param seed Misnomer: actually the z value the Perlin cloud is 'cut' on.
@@ -642,19 +907,19 @@ class MapGenerationRandomness {
      * @param scale is the distance the noise is observed from.
      */
     fun getPerlinNoise(
-        tile: TileInfo,
+        tile: Tile,
         seed: Double,
         nOctaves: Int = 6,
         persistence: Double = 0.5,
         lacunarity: Double = 2.0,
-        scale: Double = 10.0
+        scale: Double = 30.0
     ): Double {
         val worldCoords = HexMath.hex2WorldCoords(tile.position)
         return Perlin.noise3d(worldCoords.x.toDouble(), worldCoords.y.toDouble(), seed, nOctaves, persistence, lacunarity, scale)
     }
 
 
-    fun chooseSpreadOutLocations(number: Int, suitableTiles: List<TileInfo>, mapRadius: Int): ArrayList<TileInfo> {
+    fun chooseSpreadOutLocations(number: Int, suitableTiles: List<Tile>, mapRadius: Int): ArrayList<Tile> {
         if (number <= 0) return ArrayList(0)
 
         // Determine sensible initial distance from number of desired placements and mapRadius
@@ -675,7 +940,7 @@ class MapGenerationRandomness {
 
         for (distanceBetweenResources in initialDistance downTo 1) {
             var availableTiles = suitableTiles
-            val chosenTiles = ArrayList<TileInfo>(number)
+            val chosenTiles = ArrayList<Tile>(number)
 
             for (terrain in baseTerrainsToChosenTiles.keys)
                 baseTerrainsToChosenTiles[terrain] = 0
@@ -699,6 +964,6 @@ class MapGenerationRandomness {
             }
         }
         // unreachable due to last loop iteration always returning and initialDistance >= 1
-        throw Exception()
+        throw Exception("Unreachable code reached!")
     }
 }

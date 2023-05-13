@@ -1,11 +1,12 @@
 package com.unciv
 
 object Constants {
-    const val worker = "Worker"
     const val settler = "Settler"
     const val eraSpecificUnit = "Era Starting Unit"
     const val spreadReligion = "Spread Religion"
     const val removeHeresy = "Remove Foreign religions from your own cities"
+
+    const val english = "English"
 
     const val impassable = "Impassable"
     const val ocean = "Ocean"
@@ -37,6 +38,7 @@ object Constants {
     const val freshWaterFilter = "Fresh Water"
 
     const val barbarianEncampment = "Barbarian encampment"
+    const val cityCenter = "City center"
 
     const val peaceTreaty = "Peace Treaty"
     const val researchAgreement = "Research Agreement"
@@ -56,6 +58,7 @@ object Constants {
     // Easter egg name. Is to avoid conflicts when players name their own religions.
     // This religion name should never be displayed.
     const val noReligionName = "The religion of TheLegend27"
+    const val spyHideout = "Spy Hideout"
 
     const val neutralVictoryType = "Neutral"
 
@@ -71,15 +74,23 @@ object Constants {
     const val barbarians = "Barbarians"
     const val spectator = "Spectator"
 
+    const val embarked = "Embarked"
+    const val wounded = "Wounded"
+
+
     const val rising = "Rising"
     const val lowering = "Lowering"
     const val remove = "Remove "
+    const val repair = "Repair"
 
     const val uniqueOrDelimiter = "\" OR \""
 
     const val dropboxMultiplayerServer = "Dropbox"
+    const val uncivXyzServer = "https://uncivserver.xyz"
 
     const val defaultTileset = "HexaRealm"
+    const val defaultUnitset = "AbsoluteUnits"
+    const val defaultSkin = "Minimal"
 
     /**
      * Use this to determine whether a [MapUnit][com.unciv.logic.map.MapUnit]'s movement is exhausted

@@ -1,11 +1,13 @@
 package com.unciv.models.translations
 
 import com.badlogic.gdx.Gdx
+import com.unciv.Constants
 import com.unciv.UncivGame
 import com.unciv.models.ruleset.RulesetCache
 import com.unciv.models.ruleset.unique.Unique
 import com.unciv.models.stats.Stat
 import com.unciv.models.stats.Stats
+import com.unciv.ui.components.Fonts
 import com.unciv.utils.Log
 import com.unciv.utils.debug
 import java.util.*
@@ -32,7 +34,7 @@ import java.util.*
 class Translations : LinkedHashMap<String, TranslationEntry>(){
 
     var percentCompleteOfLanguages = HashMap<String,Int>()
-            .apply { put("English",100) } // So even if we don't manage to load the percentages, we can still pass the language screen
+            .apply { put(Constants.english, 100) } // So even if we don't manage to load the percentages, we can still pass the language screen
 
     internal var modsWithTranslations: HashMap<String, Translations> = hashMapOf() // key == mod name
 
@@ -145,7 +147,9 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
             for (file in Gdx.files.internal("jsons/translations").list())
                 languages.add(file.nameWithoutExtension())
         }
-        catch (ex:Exception) {} // Iterating on internal files will not work when running from a .jar
+        catch (ex:Exception) {
+            Log.error("Failed to add languages", ex)
+        } // Iterating on internal files will not work when running from a .jar
 
         languages.addAll(Locale.getAvailableLocales() // And this should work for Desktop, meaning from a .jar
                 .map { it.getDisplayName(Locale.ENGLISH) }) // Maybe THIS is the problem, that the DISPLAY locale wasn't english
@@ -157,11 +161,9 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
 
         languages.remove("template")
         languages.remove("completionPercentages")
-        languages.remove("Thai") // Until we figure out what to do with it
-        languages.remove("Vietnamese") // Until we figure out what to do with it
+        languages.remove("Thai") // Spacing looks horrible, so disable until we figure out what to do with it
 
-        return languages
-                .filter { Gdx.files.internal("jsons/translations/$it.properties").exists() }
+        return languages.filter { Gdx.files.internal("jsons/translations/$it.properties").exists() }
     }
 
     /** Ensure _all_ languages are loaded, used by [TranslationFileWriter] and `TranslationTests` */
@@ -209,13 +211,18 @@ class Translations : LinkedHashMap<String, TranslationEntry>(){
         return get(shouldCapitalizeString, language, null)?.get(language)?.toBoolean() ?: true
     }
 
+    fun triggerNotificationEffectBeforeCause(language: String): Boolean{
+        return get(effectBeforeCause, language, null)?.get(language)?.toBoolean() ?: true
+    }
+
     companion object {
         // Whenever this string is changed, it should also be changed in the translation files!
         // It is mostly used as the template for translating the order of conditionals
         const val englishConditionalOrderingString =
-            "<with a garrison> <for [mapUnitFilter] units> <above [amount] HP> <below [amount] HP> <vs cities> <vs [mapUnitFilter] units> <when fighting in [tileFilter] tiles> <when attacking> <when defending> <if this city has at least [amount] specialists> <when at war> <when not at war> <while the empire is happy> <during a Golden Age> <during the [era]> <before the [era]> <starting from the [era]> <with [techOrPolicy]> <without [techOrPolicy]>"
+            "<with a garrison> <for [mapUnitFilter] units> <above [amount] HP> <below [amount] HP> <vs cities> <vs [mapUnitFilter] units> <when fighting in [tileFilter] tiles> <when attacking> <when defending> <if this city has at least [amount] specialists> <when at war> <when not at war> <while the empire is happy> <during a Golden Age> <during the [era]> <starting from the [era]> <before the [era]> <with [techOrPolicy]> <without [techOrPolicy]>"
         const val conditionalUniqueOrderString = "ConditionalsPlacement"
         const val shouldCapitalizeString = "StartWithCapitalLetter"
+        const val effectBeforeCause = "EffectBeforeCause"
     }
 }
 
@@ -287,9 +294,8 @@ object TranslationActiveModsCache {
  *                  defaults to the input string if no translation is available,
  *                  but with placeholder or sentence brackets removed.
  */
-fun String.tr(): String {
-    val language = UncivGame.Current.settings.language
-
+fun String.tr(hideIcons:Boolean = false): String {
+    val language:String = UncivGame.Current.settings.language
     if (contains('<') && contains('>')) { // Conditionals!
         /**
          * So conditionals can contain placeholders, such as <vs [unitFilter] units>, which themselves
@@ -304,13 +310,13 @@ fun String.tr(): String {
          * together into the final fully translated string.
          */
 
-        var translatedBaseUnique = this.removeConditionals().tr()
+        var translatedBaseUnique = this.removeConditionals().tr(hideIcons)
 
         val conditionals = this.getConditionals().map { it.placeholderText }
-        val conditionsWithTranslation: HashMap<String, String> = hashMapOf()
+        val conditionsWithTranslation: LinkedHashMap<String, String> = linkedMapOf()
 
         for (conditional in this.getConditionals())
-            conditionsWithTranslation[conditional.placeholderText] = conditional.text.tr()
+            conditionsWithTranslation[conditional.placeholderText] = conditional.text.tr(hideIcons)
 
         val translatedConditionals: MutableList<String> = mutableListOf()
 
@@ -398,14 +404,14 @@ fun String.tr(): String {
         for (i in termsInMessage.indices) {
             languageSpecificPlaceholder = languageSpecificPlaceholder.replace(
                 "[${termsInTranslationPlaceholder[i]}]", // re-add square brackets to placeholder terms
-                termsInMessage[i].tr()
+                termsInMessage[i].tr(hideIcons)
             )
         }
         return languageSpecificPlaceholder      // every component is already translated
     }
 
     if (processCurly) { // Translating partial sentences
-        return curlyBraceRegex.replace(this) { it.groups[1]!!.value.tr() }
+        return curlyBraceRegex.replace(this) { it.groups[1]!!.value.tr(hideIcons) }
     }
 
     if (Stats.isStats(this)) return Stats.parse(this).toString()
@@ -414,6 +420,9 @@ fun String.tr(): String {
 
     val stat = Stat.safeValueOf(this)
     if (stat != null) return stat.character + translation
+
+    if (!hideIcons && Fonts.rulesetObjectNameToChar.containsKey(this))
+        return Fonts.rulesetObjectNameToChar[this]!! + translation
 
     return translation
 }
@@ -487,7 +496,7 @@ fun String.removeConditionals(): String {
     return this
         .replace(pointyBraceRegex, "")
         // So, this is a quick hack, but it works as long as nobody uses word separators different from " " (space) and "" (none),
-        // And no translations start or end with a space.
+        // and no translations start or end with a space.
         // According to https://linguistics.stackexchange.com/questions/6131/is-there-a-long-list-of-languages-whose-writing-systems-dont-use-spaces
         // This is a reasonable but not fully correct assumption to make.
         // By doing it like this, we exclude languages such as Tibetan, Dzongkha (Bhutan), and Ethiopian.

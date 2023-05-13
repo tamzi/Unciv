@@ -17,6 +17,8 @@ import com.unciv.models.stats.Stat
 import com.unciv.models.stats.Stats
 import com.unciv.models.translations.getPlaceholderParameters
 import com.unciv.models.translations.getPlaceholderText
+import com.unciv.utils.DebugUtils
+import com.unciv.utils.Log
 import com.unciv.utils.debug
 import org.junit.Assert
 import org.junit.Before
@@ -31,7 +33,8 @@ class BasicTests {
     var ruleset = Ruleset()
     @Before
     fun loadTranslations() {
-        RulesetCache.loadRulesets()
+        Log.shouldLog()
+        RulesetCache.loadRulesets(noMods = true)
         ruleset = RulesetCache.getVanillaRuleset()
     }
 
@@ -51,10 +54,10 @@ class BasicTests {
     fun gameIsNotRunWithDebugModes() {
         val game = UncivGame()
         Assert.assertTrue("This test will only pass if the game is not run with debug modes",
-                !game.superchargedForDebug
-                        && !game.viewEntireMapForDebug
-                        && game.simulateUntilTurnForDebug <= 0
-                        && !game.consoleMode
+                !DebugUtils.SUPERCHARGED
+                        && !DebugUtils.VISIBLE_MAP
+                        && DebugUtils.SIMULATE_UNTIL_TURN <= 0
+                        && !game.isConsoleMode
         )
     }
 
@@ -101,6 +104,7 @@ class BasicTests {
     fun uniqueTypesHaveNoUnknownParameters() {
         var noUnknownParameters = true
         for (uniqueType in UniqueType.values()) {
+            if (uniqueType.getDeprecationAnnotation()!=null) continue
             for (entry in uniqueType.parameterTypeMap.withIndex()) {
                 for (paramType in entry.value) {
                     if (paramType == UniqueParameterType.Unknown) {

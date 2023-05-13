@@ -81,7 +81,7 @@ open class Stats(
     }
 
     /** Adds each value of another [Stats] instance to this one in place */
-    fun add(other: Stats) {
+    fun add(other: Stats): Stats {
         production += other.production
         food += other.food
         gold += other.gold
@@ -89,6 +89,7 @@ open class Stats(
         culture += other.culture
         happiness += other.happiness
         faith += other.faith
+        return this
     }
 
     /** @return a new [Stats] instance containing the sum of its operands value by value */
@@ -146,6 +147,11 @@ open class Stats(
         return this.joinToString {
             (if (it.value > 0) "+" else "") + it.value.toInt() + " " + it.key.toString().tr()
         }
+    }
+
+    /** Since notifications are translated on the fly, when saving stats there we need to do so in English */
+    fun toStringForNotifications() = this.joinToString {
+        (if (it.value > 0) "+" else "") + it.value.toInt() + " " + it.key.toString()
     }
 
     // For display in diplomacy window
@@ -226,7 +232,7 @@ open class Stats(
         fun parse(string: String): Stats {
             val toReturn = Stats()
             val statsWithBonuses = string.split(", ")
-            for(statWithBonuses in statsWithBonuses){
+            for(statWithBonuses in statsWithBonuses) {
                 val match = statRegex.matchEntire(statWithBonuses)!!
                 val statName = match.groupValues[3]
                 val statAmount = match.groupValues[2].toFloat() * (if (match.groupValues[1] == "-") -1 else 1)
@@ -234,14 +240,16 @@ open class Stats(
             }
             return toReturn
         }
+
+        val ZERO = Stats()
+        val DefaultCityCenterMinimum = Stats(food = 2f, production = 1f)
     }
 }
 
 class StatMap:LinkedHashMap<String,Stats>() {
     fun add(source: String, stats: Stats) {
-        if (!containsKey(source)) put(source, stats)
-        else put(source, get(source)!! + stats)
-        // This CAN'T be get(source)!!.add() because the initial stats we get are sometimes from other places -
-        // for instance the Cities is from the currentCityStats and if we add to that we change the value in the cities themselves!
+        // We always clone to avoid touching the mutable stats of uniques
+        if (!containsKey(source)) put(source, stats.clone())
+        else get(source)!!.add(stats)
     }
 }

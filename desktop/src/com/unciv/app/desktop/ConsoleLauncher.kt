@@ -2,7 +2,6 @@ package com.unciv.app.desktop
 
 import com.unciv.Constants
 import com.unciv.UncivGame
-import com.unciv.UncivGameParameters
 import com.unciv.utils.Log
 import com.unciv.logic.GameStarter
 import com.unciv.logic.civilization.PlayerType
@@ -17,6 +16,7 @@ import com.unciv.models.simulation.Simulation
 import com.unciv.models.tilesets.TileSetCache
 import com.unciv.models.metadata.GameSetupInfo
 import com.unciv.models.ruleset.Speed
+import com.unciv.models.skins.SkinCache
 import kotlin.time.ExperimentalTime
 
 internal object ConsoleLauncher {
@@ -25,8 +25,7 @@ internal object ConsoleLauncher {
     fun main(arg: Array<String>) {
         Log.backend = DesktopLogBackend()
 
-        val consoleParameters = UncivGameParameters(consoleMode = true)
-        val game = UncivGame(consoleParameters)
+        val game = UncivGame(true)
 
         UncivGame.Current = game
         UncivGame.Current.settings = GameSettings().apply {
@@ -36,6 +35,7 @@ internal object ConsoleLauncher {
 
         RulesetCache.loadRulesets(true)
         TileSetCache.loadTileSetConfigs(true)
+        SkinCache.loadSkinConfigs(true)
 
         val gameParameters = getGameParameters("China", "Greece")
         val mapParameters = getMapParameters()
@@ -65,18 +65,9 @@ internal object ConsoleLauncher {
             speed = Speed.DEFAULT
             noBarbarians = true
             players = ArrayList<Player>().apply {
-                add(Player().apply {
-                    playerType = PlayerType.AI
-                    chosenCiv = civilization1
-                })
-                add(Player().apply {
-                    playerType = PlayerType.AI
-                    chosenCiv = civilization2
-                })
-                add(Player().apply {
-                    playerType = PlayerType.Human
-                    chosenCiv = Constants.spectator
-                })
+                add(Player(civilization1))
+                add(Player(civilization2))
+                add(Player(Constants.spectator, PlayerType.Human))
             }
         }
     }

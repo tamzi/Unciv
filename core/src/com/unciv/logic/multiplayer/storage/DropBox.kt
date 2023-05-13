@@ -1,12 +1,11 @@
 package com.unciv.logic.multiplayer.storage
 
 import com.unciv.json.json
-import com.unciv.ui.utils.extensions.UncivDateFormat.parseDate
+import com.unciv.ui.components.extensions.UncivDateFormat.parseDate
 import com.unciv.utils.Log
 import com.unciv.utils.debug
 import java.io.BufferedReader
 import java.io.DataOutputStream
-import java.io.FileNotFoundException
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
@@ -90,19 +89,26 @@ object DropBox: FileStorage {
         return json().fromJson(MetaData::class.java, reader.readText())
     }
 
-    override fun saveFileData(fileName: String, data: String, overwrite: Boolean) {
-        val overwriteModeString = if(!overwrite) "" else ""","mode":{".tag":"overwrite"}"""
+    override fun saveFileData(fileName: String, data: String) {
         dropboxApi(
             url="https://content.dropboxapi.com/2/files/upload",
             data=data,
             contentType="application/octet-stream",
-            dropboxApiArg = """{"path":"${getLocalGameLocation(fileName)}"$overwriteModeString}"""
-        )
+            dropboxApiArg = """{"path":"${getLocalGameLocation(fileName)}","mode":{".tag":"overwrite"}}"""
+        )!!
     }
 
     override fun loadFileData(fileName: String): String {
         val inputStream = downloadFile(getLocalGameLocation(fileName))
         return BufferedReader(InputStreamReader(inputStream)).readText()
+    }
+
+    override fun authenticate(userId: String, password: String): Boolean {
+        throw NotImplementedError()
+    }
+
+    override fun setPassword(newPassword: String): Boolean {
+        throw NotImplementedError()
     }
 
     fun downloadFile(fileName: String): InputStream {
@@ -128,13 +134,13 @@ object DropBox: FileStorage {
         throw FileStorageRateLimitReached(remainingRateLimitSeconds)
     }
 
-    fun fileExists(fileName: String): Boolean = try {
-            dropboxApi("https://api.dropboxapi.com/2/files/get_metadata",
-                "{\"path\":\"$fileName\"}", "application/json")
-            true
-        } catch (ex: MultiplayerFileNotFoundException) {
-            false
-        }
+//     fun fileExists(fileName: String): Boolean = try {
+//             dropboxApi("https://api.dropboxapi.com/2/files/get_metadata",
+//                 "{\"path\":\"$fileName\"}", "application/json")
+//             true
+//         } catch (ex: MultiplayerFileNotFoundException) {
+//             false
+//         }
 
 //
 //    fun createTemplate(): String {
