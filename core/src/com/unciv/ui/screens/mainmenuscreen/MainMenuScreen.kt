@@ -152,11 +152,9 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
             { game.pushScreen(NewGameScreen()) }
         column1.add(newGameButton).row()
 
-        if (game.files.getSaves().any()) {
-            val loadGameTable = getMenuButton("Load game", "OtherIcons/Load", 'l')
-                { game.pushScreen(LoadGameScreen()) }
-            column1.add(loadGameTable).row()
-        }
+        val loadGameTable = getMenuButton("Load game", "OtherIcons/Load", 'l')
+            { game.pushScreen(LoadGameScreen()) }
+        column1.add(loadGameTable).row()
 
         val multiplayerTable = getMenuButton("Multiplayer", "OtherIcons/Multiplayer", 'm')
             { game.pushScreen(MultiplayerScreen()) }
@@ -307,7 +305,7 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
                 val (message) = LoadGameScreen.getLoadExceptionMessage(notAPlayer)
                 launchOnGLThread { ToastPopup(message, this@MainMenuScreen) }
                 return@run
-            } catch (ex: Exception) {
+            } catch (_: Exception) {
                 launchOnGLThread { ToastPopup(errorText, this@MainMenuScreen) }
                 return@run
             }
@@ -315,7 +313,7 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
             // ...or when loading the game
             try {
                 game.loadGame(newGame)
-            } catch (outOfMemory: OutOfMemoryError) {
+            } catch (_: OutOfMemoryError) {
                 launchOnGLThread {
                     ToastPopup("Not enough memory on phone to load game!", this@MainMenuScreen)
                 }
@@ -324,7 +322,7 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
                 launchOnGLThread {
                     ToastPopup(message, this@MainMenuScreen)
                 }
-            } catch (ex: Exception) {
+            } catch (_: Exception) {
                 launchOnGLThread {
                     ToastPopup(errorText, this@MainMenuScreen)
                 }

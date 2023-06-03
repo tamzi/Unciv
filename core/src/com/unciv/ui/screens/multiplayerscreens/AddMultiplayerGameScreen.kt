@@ -15,7 +15,7 @@ import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
 import com.unciv.utils.Concurrency
 import com.unciv.utils.launchOnGLThread
-import java.util.*
+import java.util.UUID
 
 class AddMultiplayerGameScreen : PickerScreen() {
     init {
@@ -47,7 +47,7 @@ class AddMultiplayerGameScreen : PickerScreen() {
         rightSideButton.onClick {
             try {
                 UUID.fromString(IdChecker.checkAndReturnGameUuid(gameIDTextField.text))
-            } catch (ex: Exception) {
+            } catch (_: Exception) {
                 ToastPopup("Invalid game ID!", this)
                 return@onClick
             }

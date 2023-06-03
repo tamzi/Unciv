@@ -1,3 +1,80 @@
+## 4.6.16
+
+By SomeTroglodyte:
+- Unit Overview: Improving a tile is also "what the unit is doing"
+- Replacement PlatformSaverLoader for Linux X11 systems
+- All notifications from Overview are now temporary
+- Politics overview no longer discloses random number of players
+
+Worker will now replace improvements to get resources - By janarvid
+
+Spectators do not get natural wonder discovery notifications
+
+Added checksum to be added to uploaded multiplayer games
+
+Policy adoption triggers resource recalculation
+
+## 4.6.15
+
+'Crop yield' chart displays correct data
+
+Modding:
+- Units can transform to any unit
+- Fixed policy softlock from conflicting mod policies
+- 'Unpurchaseable' units are properly unpurchaseable
+
+By SomeTroglodyte:
+- Map editor update - concurrency, resource amounts, file double-click
+- Fix road maintenance unique being ignored
+- Fix mouse wheel on Notifications scroll
+- Unit overview remembers scroll position after promoting
+
+Allow game loading even when no saved games exist - By alexban011
+
+## 4.6.14
+
+By SomeTroglodyte:
+- Next-Turn Progressbar
+- Fixed crash when puppeting city
+
+Population icon gets locked with doubleclick, clicks cycle assigned-unassigned
+
+Resolved crashes when clicking mod in mod management
+
+AI civilian improvement: keep working in tiles where enemy units can't reach
+
+Prophets are not expelled on open borders end
+
+City-state-owned great merchants can no longer 'conduct trade mission' on their own tiles
+
+Game saves are regular json, not libgdx-specific format
+
+## 4.6.13
+
+Failure to get mod preview image no longer causes crash
+
+Modding: Added 'upon adopting [belief]' trigger, allowed belief adoption to trigger uniques
+
+Added turn number to victory replay
+
+Clicking locally-added mods no longer crashes
+
+By SomeTroglodyte:
+- Fix off-by-one error in autoAssignPopulation
+- Happiness change from bought buildings can reapply citizen focus
+- Local and jpg mod previews
+- Fix UnitTable layout
+
+## 4.6.12
+
+Animate battle damage numbers - By SomeTroglodyte
+
+When picking custom map: Display map ruleset, don't show unloadable maps
+
+Modding: Allow mods to contain a "preview.png" file for visual indication
+
+Multi-server preparations :)
+
 ## 4.6.11
 
 Update UI after founding city when breaking promise

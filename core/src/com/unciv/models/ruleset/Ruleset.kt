@@ -55,6 +55,7 @@ class ModOptions : IHasUniques {
 
     var lastUpdated = ""
     var modUrl = ""
+    var defaultBranch = "master"
     var author = ""
     var modSize = 0
     var topics = mutableListOf<String>()
@@ -343,7 +344,20 @@ class Ruleset {
                     if (policy.requires == null) {
                         policy.requires = arrayListOf(branch.name)
                     }
+
+                    if (policy != branch.policies.last()) {
+                        // If mods override a previous policy's location, we don't want that policy to stick around,
+                        // because it leads to softlocks on the policy picker screen
+                        val conflictingLocationPolicy = policies.values.firstOrNull {
+                            it.branch.name == policy.branch.name
+                                && it.column == policy.column
+                                && it.row == policy.row
+                        }
+                        if (conflictingLocationPolicy != null)
+                            policies.remove(conflictingLocationPolicy.name)
+                    }
                     policies[policy.name] = policy
+
                 }
 
                 // Add a finisher

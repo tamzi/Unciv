@@ -19,15 +19,16 @@ import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unique.endTurn
 import com.unciv.models.stats.Stats
 import com.unciv.ui.components.MayaCalendar
+import com.unciv.ui.screens.worldscreen.status.NextTurnProgress
 import com.unciv.utils.Log
-import java.util.*
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.random.Random
 
 class TurnManager(val civInfo: Civilization) {
 
 
-    fun startTurn() {
+    fun startTurn(progressBar: NextTurnProgress? = null) {
         if (civInfo.isSpectator()) return
 
         if (civInfo.isMajorCiv() && civInfo.isAlive()) {
@@ -66,7 +67,10 @@ class TurnManager(val civInfo: Civilization) {
         civInfo.cache.updateCitiesConnectedToCapital()
         startTurnFlags()
         updateRevolts()
-        for (city in civInfo.cities) CityTurnManager(city).startTurn()  // Most expensive part of startTurn
+        for (city in civInfo.cities) {
+            progressBar?.increment()
+            CityTurnManager(city).startTurn()  // Most expensive part of startTurn
+        }
 
         for (unit in civInfo.units.getCivUnits()) UnitTurnManager(unit).startTurn()
 
@@ -173,7 +177,7 @@ class TurnManager(val civInfo: Civilization) {
             return
         }
 
-        val random = Random()
+        val random = Random.Default
         val rebelCount = 1 + random.nextInt(100 + 20 * (civInfo.cities.size - 1)) / 100
         val spawnCity = civInfo.cities.maxByOrNull { random.nextInt(it.population.population + 10) } ?: return
         val spawnTile = spawnCity.getTiles().maxByOrNull { rateTileForRevoltSpawn(it) } ?: return
@@ -215,10 +219,10 @@ class TurnManager(val civInfo: Civilization) {
     }
 
     private fun getTurnsBeforeRevolt() =
-            ((4 + Random().nextInt(3)) * max(civInfo.gameInfo.speed.modifier, 1f)).toInt()
+            ((4 + Random.Default.nextInt(3)) * max(civInfo.gameInfo.speed.modifier, 1f)).toInt()
 
 
-    fun endTurn() {
+    fun endTurn(progressBar: NextTurnProgress? = null) {
         val notificationsLog = civInfo.notificationsLog
         val notificationsThisTurn = Civilization.NotificationsLog(civInfo.gameInfo.turns)
         notificationsThisTurn.notifications.addAll(civInfo.notifications)
@@ -278,8 +282,10 @@ class TurnManager(val civInfo: Civilization) {
 
         // To handle tile's owner issue (#8246), we need to run cities being razed first.
         // a city can be removed while iterating (if it's being razed) so we need to iterate over a copy - sorting does one
-        for (city in civInfo.cities.sortedByDescending { it.isBeingRazed })
+        for (city in civInfo.cities.sortedByDescending { it.isBeingRazed }) {
+            progressBar?.increment()
             CityTurnManager(city).endTurn()
+        }
 
         civInfo.temporaryUniques.endTurn()
 
