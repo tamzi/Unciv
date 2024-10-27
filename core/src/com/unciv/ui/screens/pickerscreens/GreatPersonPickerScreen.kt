@@ -7,13 +7,15 @@ import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.models.translations.tr
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.components.extensions.isEnabled
-import com.unciv.ui.components.extensions.onClick
-import com.unciv.ui.components.extensions.onDoubleClick
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.components.input.onDoubleClick
+import com.unciv.ui.screens.worldscreen.WorldScreen
 
-class GreatPersonPickerScreen(val civInfo:Civilization) : PickerScreen() {
+class GreatPersonPickerScreen(val worldScreen: WorldScreen, val civInfo: Civilization) : PickerScreen() {
     private var theChosenOne: BaseUnit? = null
 
     init {
+        worldScreen.autoPlay.stopAutoPlay()
         closeButton.isVisible = false
         rightSideButton.setText("Choose a free great person".tr())
 
@@ -22,7 +24,7 @@ class GreatPersonPickerScreen(val civInfo:Civilization) : PickerScreen() {
 
         for (unit in greatPersonUnits) {
             val button =
-                PickerPane.getPickerOptionButton(ImageGetter.getUnitIcon(unit.name), unit.name)
+                PickerPane.getPickerOptionButton(ImageGetter.getUnitIcon(unit), unit.name)
             button.pack()
             button.isEnabled = !useMayaLongCount || unit.name in civInfo.greatPeople.longCountGPPool
             if (button.isEnabled) {
@@ -43,8 +45,8 @@ class GreatPersonPickerScreen(val civInfo:Civilization) : PickerScreen() {
 
     }
 
-    private fun confirmAction(useMayaLongCount: Boolean){
-        civInfo.units.addUnit(theChosenOne!!.name, civInfo.getCapital())
+    private fun confirmAction(useMayaLongCount: Boolean) {
+        civInfo.units.addUnit(theChosenOne!!, civInfo.getCapital())
         civInfo.greatPeople.freeGreatPeople--
         if (useMayaLongCount) {
             civInfo.greatPeople.mayaLimitedFreeGP--
@@ -53,4 +55,3 @@ class GreatPersonPickerScreen(val civInfo:Civilization) : PickerScreen() {
         UncivGame.Current.popScreen()
     }
 }
-

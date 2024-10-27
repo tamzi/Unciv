@@ -1,12 +1,8 @@
+
 import com.unciv.build.BuildConfig
-import com.unciv.build.BuildConfig.gdxVersion
 
 plugins {
     id("kotlin")
-}
-
-java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
 }
 
 sourceSets {
@@ -15,9 +11,17 @@ sourceSets {
     }
 }
 
-dependencies {
-    // See https://libgdx.com/news/2021/07/devlog-7-lwjgl3#do-i-need-to-do-anything-else
-    api("com.badlogicgames.gdx:gdx-lwjgl3-glfw-awt-macos:$gdxVersion")
+kotlin {
+    jvmToolchain(17)
+
+    target {
+        compilations.all {
+            kotlinOptions.jvmTarget = JavaVersion.VERSION_1_8.toString()
+        }
+    }
+}
+java {
+    targetCompatibility = JavaVersion.VERSION_1_8
 }
 
 val mainClassName = "com.unciv.app.desktop.DesktopLauncher"
@@ -146,7 +150,7 @@ for (platform in Platform.values()) {
 
             val platformNameForPackrCmd =
                     if (platform == Platform.MacOS) "mac"
-                    else platform.name.toLowerCase()
+                    else platform.name.lowercase()
 
             val command = "java -jar $rootDir/packr-all-4.0.0.jar" +
                     " --platform $platformNameForPackrCmd" +

@@ -2,35 +2,35 @@ package com.unciv.ui.screens.newgamescreen
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.scenes.scene2d.ui.SelectBox
-import com.badlogic.gdx.scenes.scene2d.ui.Skin
 import com.badlogic.gdx.scenes.scene2d.ui.VerticalGroup
-import com.badlogic.gdx.utils.Array
 import com.unciv.Constants
 import com.unciv.UncivGame
 import com.unciv.logic.GameInfo
 import com.unciv.logic.GameStarter
 import com.unciv.logic.IdChecker
+import com.unciv.logic.UncivShowableException
 import com.unciv.logic.civilization.PlayerType
 import com.unciv.logic.files.MapSaver
 import com.unciv.logic.map.MapGeneratedMainType
-import com.unciv.logic.multiplayer.OnlineMultiplayer
+import com.unciv.logic.multiplayer.Multiplayer
 import com.unciv.logic.multiplayer.storage.FileStorageRateLimitReached
+import com.unciv.models.metadata.BaseRuleset
 import com.unciv.models.metadata.GameSetupInfo
+import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
 import com.unciv.models.translations.tr
-import com.unciv.ui.components.ExpanderTab
-import com.unciv.ui.components.KeyCharAndCode
 import com.unciv.ui.components.extensions.addSeparator
 import com.unciv.ui.components.extensions.addSeparatorVertical
 import com.unciv.ui.components.extensions.disable
 import com.unciv.ui.components.extensions.enable
-import com.unciv.ui.components.extensions.keyShortcuts
-import com.unciv.ui.components.extensions.onActivation
-import com.unciv.ui.components.extensions.onClick
 import com.unciv.ui.components.extensions.pad
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.input.KeyCharAndCode
+import com.unciv.ui.components.input.keyShortcuts
+import com.unciv.ui.components.input.onActivation
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.components.widgets.ExpanderTab
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.popups.Popup
@@ -38,29 +38,29 @@ import com.unciv.ui.popups.ToastPopup
 import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.ui.screens.basescreen.RecreateOnResize
 import com.unciv.ui.screens.pickerscreens.PickerScreen
-import com.unciv.utils.Log
 import com.unciv.utils.Concurrency
+import com.unciv.utils.Log
 import com.unciv.utils.launchOnGLThread
 import kotlinx.coroutines.coroutineScope
 import java.net.URL
 import java.util.UUID
-import com.unciv.ui.components.AutoScrollPane as ScrollPane
+import kotlin.math.floor
+import com.unciv.ui.components.widgets.AutoScrollPane as ScrollPane
 
 class NewGameScreen(
-    _gameSetupInfo: GameSetupInfo? = null
+    defaultGameSetupInfo: GameSetupInfo? = null
 ): IPreviousScreen, PickerScreen(), RecreateOnResize {
 
-    override val gameSetupInfo = _gameSetupInfo ?: GameSetupInfo.fromSettings()
-    override var ruleset = RulesetCache.getComplexRuleset(gameSetupInfo.gameParameters) // needs to be set because the GameOptionsTable etc. depend on this
+    override val gameSetupInfo = defaultGameSetupInfo ?: GameSetupInfo.fromSettings()
+    override val ruleset = Ruleset()  // updateRuleset will clear and add
     private val newGameOptionsTable: GameOptionsTable
-    private val playerPickerTable: PlayerPickerTable
+    internal val playerPickerTable: PlayerPickerTable
     private val mapOptionsTable: MapOptionsTable
 
     init {
         val isPortrait = isNarrowerThan4to3()
 
-        updateRuleset()  // must come before playerPickerTable so mod nations from fromSettings
-        // Has to be initialized before the mapOptionsTable, since the mapOptionsTable refers to it on init
+        tryUpdateRuleset(updateUI = false)  // must come before playerPickerTable so mod nations from fromSettings
 
         // remove the victory types which are not in the rule set (e.g. were in the recently disabled mod)
         gameSetupInfo.gameParameters.victoryTypes.removeAll { it !in ruleset.victories.keys }
@@ -79,17 +79,17 @@ class NewGameScreen(
             updatePlayerPickerRandomLabel = { playerPickerTable.updateRandomNumberLabel() }
         )
         mapOptionsTable = MapOptionsTable(this)
-        pickerPane.closeButton.onActivation {
+        closeButton.onActivation {
             mapOptionsTable.cancelBackgroundJobs()
             game.popScreen()
         }
-        pickerPane.closeButton.keyShortcuts.add(KeyCharAndCode.BACK)
+        closeButton.keyShortcuts.add(KeyCharAndCode.BACK)
 
         if (isPortrait) initPortrait()
         else initLandscape()
 
-        pickerPane.bottomTable.background = skinStrings.getUiBackground("NewGameScreen/BottomTable", tintColor = skinStrings.skinConfig.clearColor)
-        pickerPane.topTable.background = skinStrings.getUiBackground("NewGameScreen/TopTable", tintColor = skinStrings.skinConfig.clearColor)
+        bottomTable.background = skinStrings.getUiBackground("NewGameScreen/BottomTable", tintColor = skinStrings.skinConfig.clearColor)
+        topTable.background = skinStrings.getUiBackground("NewGameScreen/TopTable", tintColor = skinStrings.skinConfig.clearColor)
 
         if (UncivGame.Current.settings.lastGameSetup != null) {
             rightSideGroup.addActorAt(0, VerticalGroup().padBottom(5f))
@@ -107,19 +107,27 @@ class NewGameScreen(
         }
 
         rightSideButton.setText("Start game!".tr())
-        rightSideButton.onClick(this::onStartGameClicked)
+        rightSideButton.onClick(this::startGameAvoidANRs)
     }
 
-    private fun onStartGameClicked() {
+    private fun startGameAvoidANRs(){
+        // Don't allow players to click the game while we're checking if it's ok
+        Gdx.input.inputProcessor = null
+        val success = startGame()
+        // if it is successful, the player should wait for the new screen, not touch the old one
+        if (!success) Gdx.input.inputProcessor = stage
+    }
+    
+    private fun startGame(): Boolean {
         mapOptionsTable.cancelBackgroundJobs()
         if (gameSetupInfo.gameParameters.isOnlineMultiplayer) {
             if (!checkConnectionToMultiplayerServer()) {
                 val noInternetConnectionPopup = Popup(this)
-                val label = if (OnlineMultiplayer.usesCustomServer()) "Couldn't connect to Multiplayer Server!" else "Couldn't connect to Dropbox!"
+                val label = if (Multiplayer.usesCustomServer()) "Couldn't connect to Multiplayer Server!" else "Couldn't connect to Dropbox!"
                 noInternetConnectionPopup.addGoodSizedLabel(label.tr()).row()
                 noInternetConnectionPopup.addCloseButton()
                 noInternetConnectionPopup.open()
-                return
+                return false
             }
 
             for (player in gameSetupInfo.gameParameters.players.filter { it.playerType == PlayerType.Human }) {
@@ -130,7 +138,7 @@ class NewGameScreen(
                     invalidPlayerIdPopup.addGoodSizedLabel("Invalid player ID!".tr()).row()
                     invalidPlayerIdPopup.addCloseButton()
                     invalidPlayerIdPopup.open()
-                    return
+                    return false
                 }
             }
 
@@ -140,22 +148,21 @@ class NewGameScreen(
                     notAllowedToSpectate.addGoodSizedLabel("You are not allowed to spectate!".tr()).row()
                     notAllowedToSpectate.addCloseButton()
                     notAllowedToSpectate.open()
-                    return
+                    return false
                 }
             }
         }
 
         if (gameSetupInfo.gameParameters.players.none {
                     it.playerType == PlayerType.Human &&
-                            // do not allow multiplayer with only remote spectator(s) and AI(s) - non-MP that works
-                            !(it.chosenCiv == Constants.spectator && gameSetupInfo.gameParameters.isOnlineMultiplayer &&
-                                    it.playerId != UncivGame.Current.settings.multiplayer.userId)
+                            // do not allow multiplayer with only spectator(s) and AI(s) - non-MP that works
+                            !(it.chosenCiv == Constants.spectator && gameSetupInfo.gameParameters.isOnlineMultiplayer)
                 }) {
             val noHumanPlayersPopup = Popup(this)
             noHumanPlayersPopup.addGoodSizedLabel("No human players selected!".tr()).row()
             noHumanPlayersPopup.addCloseButton()
             noHumanPlayersPopup.open()
-            return
+            return false
         }
 
         if (gameSetupInfo.gameParameters.victoryTypes.isEmpty()) {
@@ -163,19 +170,30 @@ class NewGameScreen(
             noVictoryTypesPopup.addGoodSizedLabel("No victory conditions were selected!".tr()).row()
             noVictoryTypesPopup.addCloseButton()
             noVictoryTypesPopup.open()
-            return
+            return false
         }
 
-        Gdx.input.inputProcessor = null // remove input processing - nothing will be clicked!
+        val modCheckResult = newGameOptionsTable.modCheckboxes.savedModcheckResult
+        newGameOptionsTable.modCheckboxes.savedModcheckResult = null
+        if (modCheckResult != null) {
+            AcceptModErrorsPopup(
+                this, modCheckResult,
+                restoreDefault = { newGameOptionsTable.resetRuleset() },
+                action = {
+                    gameSetupInfo.gameParameters.acceptedModCheckErrors = modCheckResult
+                    startGameAvoidANRs()
+                }
+            )
+            return false
+        }
 
         if (mapOptionsTable.mapTypeSelectBox.selected.value == MapGeneratedMainType.custom) {
             val map = try {
                 MapSaver.loadMap(gameSetupInfo.mapFile!!)
             } catch (ex: Throwable) {
                 Log.error("Could not load map", ex)
-                Gdx.input.inputProcessor = stage
                 ToastPopup("Could not load map!", this)
-                return
+                return false
             }
 
             val rulesetIncompatibilities = map.getRulesetIncompatibility(ruleset)
@@ -186,8 +204,7 @@ class NewGameScreen(
                     incompatibleMap.addGoodSizedLabel(incompatibility).row()
                 incompatibleMap.addCloseButton()
                 incompatibleMap.open()
-                Gdx.input.inputProcessor = stage
-                return
+                return false
             }
         } else {
             // Generated map - check for sensible dimensions and if exceeded correct them and notify user
@@ -196,28 +213,28 @@ class NewGameScreen(
             if (message != null) {
                 ToastPopup( message, UncivGame.Current.screen!!, 4000 )
                 with (mapOptionsTable.generatedMapOptionsTable) {
-                    customMapSizeRadius.text = mapSize.radius.toString()
-                    customMapWidth.text = mapSize.width.toString()
-                    customMapHeight.text = mapSize.height.toString()
+                    customMapSizeRadius.text = mapSize.radius.tr()
+                    customMapWidth.text = mapSize.width.tr()
+                    customMapHeight.text = mapSize.height.tr()
                 }
-                Gdx.input.inputProcessor = stage
-                return
+                return false
             }
         }
 
         rightSideButton.disable()
-        rightSideButton.setText("Working...".tr())
+        rightSideButton.setText(Constants.working.tr())
 
         setSkin()
         // Creating a new game can take a while and we don't want ANRs
         Concurrency.runOnNonDaemonThreadPool("NewGame") {
             startNewGame()
         }
+        return true
     }
 
     /** Subtables may need an upper limit to their width - they can ask this function. */
     // In sync with isPortrait in init, here so UI details need not know about 3-column vs 1-column layout
-    internal fun getColumnWidth() = stage.width / (if (isNarrowerThan4to3()) 1 else 3)
+    internal fun getColumnWidth() = floor(stage.width / (if (isNarrowerThan4to3()) 1 else 3))
 
     private fun initLandscape() {
         scrollPane.setScrollingDisabled(true,true)
@@ -266,7 +283,7 @@ class NewGameScreen(
     private fun checkConnectionToMultiplayerServer(): Boolean {
         return try {
             val multiplayerServer = UncivGame.Current.settings.multiplayer.server
-            val u =  URL(if (OnlineMultiplayer.usesDropbox()) "https://content.dropboxapi.com" else multiplayerServer)
+            val u =  URL(if (Multiplayer.usesDropbox()) "https://content.dropboxapi.com" else multiplayerServer)
             val con = u.openConnection()
             con.connectTimeout = 3000
             con.connect()
@@ -280,13 +297,24 @@ class NewGameScreen(
     private suspend fun startNewGame() = coroutineScope {
         val popup = Popup(this@NewGameScreen)
         launchOnGLThread {
-            popup.addGoodSizedLabel("Working...").row()
+            popup.addGoodSizedLabel(Constants.working).row()
             popup.open()
         }
 
         val newGame:GameInfo
         try {
-            newGame = GameStarter.startNewGame(gameSetupInfo)
+            val selectedScenario = mapOptionsTable.getSelectedScenario()
+            newGame = if (selectedScenario == null)
+                GameStarter.startNewGame(gameSetupInfo)
+            else {
+                val gameInfo = game.files.loadGameFromFile(selectedScenario.file)
+                // Instead of removing spectator we AI-ify it, so we don't get problems in e.g. diplomacy
+                gameInfo.civilizations.firstOrNull { it.civName == Constants.spectator }?.playerType = PlayerType.AI
+                for (playerInfo in gameSetupInfo.gameParameters.players){
+                    gameInfo.civilizations.firstOrNull { it.civName == playerInfo.chosenCiv }?.playerType = playerInfo.playerType
+                }
+                gameInfo
+            }
         } catch (exception: Exception) {
             exception.printStackTrace()
             launchOnGLThread {
@@ -294,6 +322,9 @@ class NewGameScreen(
                     reuseWith("It looks like we can't make a map with the parameters you requested!")
                     row()
                     addGoodSizedLabel("Maybe you put too many players into too small a map?").row()
+                    addButton("Copy to clipboard"){
+                        Gdx.app.clipboard.contents = exception.stackTraceToString()
+                    }
                     addCloseButton()
                 }
                 Gdx.input.inputProcessor = stage
@@ -307,7 +338,7 @@ class NewGameScreen(
             newGame.isUpToDate = true // So we don't try to download it from dropbox the second after we upload it - the file is not yet ready for loading!
             try {
                 game.onlineMultiplayer.createGame(newGame)
-                game.files.requestAutoSave(newGame)
+                game.files.autosaves.requestAutoSave(newGame)
             } catch (ex: FileStorageRateLimitReached) {
                 launchOnGLThread {
                     popup.reuseWith("Server limit reached! Please wait for [${ex.limitRemainingSeconds}] seconds", true)
@@ -340,11 +371,40 @@ class NewGameScreen(
         }
     }
 
-    fun updateRuleset() {
+    /** Updates our local [ruleset] from [gameSetupInfo], guarding against exceptions.
+     *
+     *  Note: The options reset on failure is not propagated automatically to the Widgets -
+     *  the caller must ensure that.
+     *
+     *  @return Success - failure means gameSetupInfo was reset to defaults and the Ruleset was reverted to G&K
+     */
+    fun tryUpdateRuleset(updateUI: Boolean): Boolean {
+        var success = true
+        fun handleFailure(message: String): Ruleset {
+            success = false
+            ToastPopup(message, this, 5000)
+            gameSetupInfo.gameParameters.mods.clear()
+            gameSetupInfo.gameParameters.baseRuleset = BaseRuleset.Civ_V_GnK.fullName
+            return RulesetCache[BaseRuleset.Civ_V_GnK.fullName]!!
+        }
+
+        val newRuleset = try {
+            // this can throw with non-default gameSetupInfo, e.g. when Mods change or we change the impact of Mod errors
+            RulesetCache.getComplexRuleset(gameSetupInfo.gameParameters)
+        } catch (ex: UncivShowableException) {
+            handleFailure("«YELLOW»{Your previous options needed to be reset to defaults.}«»\n\n${ex.localizedMessage}")
+        } catch (ex: Throwable) {
+            Log.debug("updateRuleset failed", ex)
+            handleFailure("«RED»{Your previous options needed to be reset to defaults.}«»")
+        }
+
         ruleset.clear()
-        ruleset.add(RulesetCache.getComplexRuleset(gameSetupInfo.gameParameters))
+        ruleset.add(newRuleset)
         ImageGetter.setNewRuleset(ruleset)
         game.musicController.setModList(gameSetupInfo.gameParameters.getModsAndBaseRuleset())
+
+        if (updateUI) newGameOptionsTable.updateRuleset(ruleset)
+        return success
     }
 
     fun lockTables() {
@@ -360,30 +420,9 @@ class NewGameScreen(
     fun updateTables() {
         playerPickerTable.gameParameters = gameSetupInfo.gameParameters
         playerPickerTable.update()
-        newGameOptionsTable.gameParameters = gameSetupInfo.gameParameters
+        newGameOptionsTable.changeGameParameters(gameSetupInfo.gameParameters)
         newGameOptionsTable.update()
     }
 
     override fun recreate(): BaseScreen = NewGameScreen(gameSetupInfo)
-}
-
-class TranslatedSelectBox(values : Collection<String>, default:String, skin: Skin) : SelectBox<TranslatedSelectBox.TranslatedString>(skin) {
-    class TranslatedString(val value: String) {
-        val translation = value.tr()
-        override fun toString() = translation
-        // Equality contract needs to be implemented else TranslatedSelectBox.setSelected won't work properly
-        override fun equals(other: Any?): Boolean = other is TranslatedString && value == other.value
-        override fun hashCode() = value.hashCode()
-    }
-
-    init {
-        val array = Array<TranslatedString>()
-        values.forEach { array.add(TranslatedString(it)) }
-        items = array
-        selected = array.firstOrNull { it.value == default } ?: array.first()
-    }
-
-    fun setSelected(newValue: String) {
-        selected = items.firstOrNull { it == TranslatedString(newValue) } ?: return
-    }
 }

@@ -1,7 +1,9 @@
 package com.unciv.ui.popups
 
 import com.badlogic.gdx.scenes.scene2d.Stage
-import com.unciv.ui.components.extensions.onClick
+import com.badlogic.gdx.utils.Align
+import com.unciv.ui.components.widgets.ColorMarkupLabel
+import com.unciv.ui.components.input.onClick
 import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.utils.Concurrency
 import com.unciv.utils.launchOnGLThread
@@ -9,9 +11,13 @@ import kotlinx.coroutines.delay
 
 /**
  * This is an unobtrusive popup which will close itself after a given amount of time.
- * Default time is two seconds (in milliseconds)
+ * - Will show on top of other Popups, but not on top of other ToastPopups
+ * - Several calls in a short time will be shown sequentially, each "waiting their turn"
+ * - The user can close a Toast by clicking it
+ * - Supports color markup via [ColorMarkupLabel], using «» instead of Gdx's [].
+ * @param time Duration in milliseconds, defaults to 2 seconds
  */
-class ToastPopup (message: String, stageToShowOn: Stage, val time: Long = 2000) : Popup(stageToShowOn){
+class ToastPopup (message: String, stageToShowOn: Stage, val time: Long = 2000) : Popup(stageToShowOn) {
 
     constructor(message: String, screen: BaseScreen, time: Long = 2000) : this(message, screen.stage, time)
 
@@ -20,14 +26,19 @@ class ToastPopup (message: String, stageToShowOn: Stage, val time: Long = 2000) 
         setFillParent(false)
         onClick { close() }  // or `touchable = Touchable.disabled` so you can operate what's behind
 
-        addGoodSizedLabel(message)
-        open()
-        //move it to the top so its not in the middle of the screen
-        //have to be done after open() because open() centers the popup
+        add(ColorMarkupLabel(message).apply {
+            wrap = true
+            setAlignment(Align.center)
+        }).width(stageToShowOn.width / 2)
+
+        open(force = stageToShowOn.actors.none { it is ToastPopup })
+
+        // move it to the top so its not in the middle of the screen
+        // has to be done after open() because open() centers the popup
         y = stageToShowOn.height - (height + 20f)
     }
 
-    private fun startTimer(){
+    private fun startTimer() {
         Concurrency.run("ResponsePopup") {
             delay(time)
             launchOnGLThread { this@ToastPopup.close() }

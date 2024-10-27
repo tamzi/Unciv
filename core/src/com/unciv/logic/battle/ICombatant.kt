@@ -19,7 +19,7 @@ interface ICombatant {
     fun isInvisible(to: Civilization): Boolean
     fun canAttack(): Boolean
     /** Implements [UniqueParameterType.CombatantFilter][com.unciv.models.ruleset.unique.UniqueParameterType.CombatantFilter] */
-    fun matchesCategory(category: String): Boolean
+    fun matchesFilter(filter: String): Boolean
     fun getAttackSound(): UncivSound
 
     fun isMelee(): Boolean = !isRanged()
@@ -33,11 +33,11 @@ interface ICombatant {
     }
     fun isWaterUnit(): Boolean {
         if (this is CityCombatant) return false
-        return (this as MapUnitCombatant).unit.baseUnit.isWaterUnit()
+        return (this as MapUnitCombatant).unit.baseUnit.isWaterUnit
     }
     fun isLandUnit(): Boolean {
         if (this is CityCombatant) return false
-        return (this as MapUnitCombatant).unit.baseUnit.isLandUnit()
+        return (this as MapUnitCombatant).unit.baseUnit.isLandUnit
     }
     fun isCity(): Boolean {
         return this is CityCombatant

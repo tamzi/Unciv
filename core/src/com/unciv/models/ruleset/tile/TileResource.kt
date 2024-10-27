@@ -5,30 +5,69 @@ import com.unciv.logic.map.tile.Tile
 import com.unciv.models.ruleset.Belief
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetStatsObject
+import com.unciv.models.ruleset.unique.StateForConditionals
 import com.unciv.models.ruleset.unique.UniqueTarget
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.stats.Stats
+import com.unciv.ui.objectdescriptions.uniquesToCivilopediaTextLines
 import com.unciv.ui.screens.civilopediascreen.FormattedLine
 
 class TileResource : RulesetStatsObject() {
 
     var resourceType: ResourceType = ResourceType.Bonus
     var terrainsCanBeFoundOn: List<String> = listOf()
-    var improvement: String? = null
+
     /** stats that this resource adds to a tile */
     var improvementStats: Stats? = null
     var revealedBy: String? = null
+
+    /** Legacy "which improvement will unlock this treausre"
+     *  @see improvedBy
+     *  @see getImprovements
+     */
+    var improvement: String? = null
+    /** Defines which improvement will "unlock" this resource
+     *  @see improvement
+     *  @see getImprovements
+     */
     var improvedBy: List<String> = listOf()
+
     var majorDepositAmount: DepositAmount = DepositAmount()
     var minorDepositAmount: DepositAmount = DepositAmount()
 
-    private val _allImprovements by lazy {
-        if (improvement == null) improvedBy
-        else improvedBy + improvement!!
+    private var improvementsInitialized = false
+    /** Cache collecting [improvement], [improvedBy] and [UniqueType.ImprovesResources] uniques on the improvements themselves. */
+    private val allImprovements = mutableSetOf<String>()
+    private var ruleset: Ruleset? = null
+
+    /** Collects which improvements "unlock" this resource, caches and returns the Set.
+     *  - The cache is cleared after ruleset load and combine, via [setTransients].
+     *  @see improvement
+     *  @see improvedBy
+     *  @see UniqueType.ImprovesResources
+     */
+    fun getImprovements(): Set<String> {
+        if (improvementsInitialized) return allImprovements
+        val ruleset = this.ruleset
+            ?: throw IllegalStateException("No ruleset on TileResource when initializing improvements")
+        if (improvement != null) allImprovements += improvement!!
+        allImprovements.addAll(improvedBy)
+        for (improvement in ruleset.tileImprovements.values) {
+            if (improvement.getMatchingUniques(UniqueType.ImprovesResources).none { matchesFilter(it.params[0]) }) continue
+            allImprovements += improvement.name
+        }
+        improvementsInitialized = true
+        return allImprovements
     }
 
-    fun getImprovements(): List<String> {
-        return _allImprovements
+    /** Clears the cache for [getImprovements] and saves the Ruleset the cache update will need.
+     *  - Doesn't evaluate the cache immediately, that would break tests as it trips the uniqueObjects lazy and tests manipulate uniques after ruleset load.
+     *  - called from [Ruleset.updateResourceTransients]
+     */
+    fun setTransients(ruleset: Ruleset) {
+        allImprovements.clear()
+        improvementsInitialized = false
+        this.ruleset = ruleset
     }
 
     override fun getUniqueTarget() = UniqueTarget.Resource
@@ -41,14 +80,15 @@ class TileResource : RulesetStatsObject() {
         textList += FormattedLine("${resourceType.name} resource", header = 4, color = resourceType.color)
         textList += FormattedLine()
 
+        uniquesToCivilopediaTextLines(textList, sorted = true)
+
         textList += FormattedLine(cloneStats().toString())
 
         if (terrainsCanBeFoundOn.isNotEmpty()) {
             textList += FormattedLine()
             if (terrainsCanBeFoundOn.size == 1) {
-                with (terrainsCanBeFoundOn[0]) {
-                    textList += FormattedLine("{Can be found on} {$this}", link = "Terrain/$this")
-                }
+                val terrainName = terrainsCanBeFoundOn[0]
+                textList += FormattedLine("{Can be found on} {$terrainName}", link = "Terrain/$terrainName")
             } else {
                 textList += FormattedLine("{Can be found on}:")
                 terrainsCanBeFoundOn.forEach {
@@ -92,7 +132,8 @@ class TileResource : RulesetStatsObject() {
             }
         }
 
-        val buildingsThatConsumeThis = ruleset.buildings.values.filter { it.getResourceRequirementsPerTurn().containsKey(name) }
+        val buildingsThatConsumeThis = ruleset.buildings.values.filter { it.getResourceRequirementsPerTurn(
+            StateForConditionals.IgnoreConditionals).containsKey(name) }
         if (buildingsThatConsumeThis.isNotEmpty()) {
             textList += FormattedLine()
             textList += FormattedLine("{Buildings that consume this resource}:")
@@ -101,7 +142,8 @@ class TileResource : RulesetStatsObject() {
             }
         }
 
-        val unitsThatConsumeThis = ruleset.units.values.filter { it.getResourceRequirementsPerTurn().containsKey(name) }
+        val unitsThatConsumeThis = ruleset.units.values.filter { it.getResourceRequirementsPerTurn(
+            StateForConditionals.IgnoreConditionals).containsKey(name) }
         if (unitsThatConsumeThis.isNotEmpty()) {
             textList += FormattedLine()
             textList += FormattedLine("{Units that consume this resource}: ")
@@ -130,10 +172,34 @@ class TileResource : RulesetStatsObject() {
         return getImprovements().contains(improvementName)
     }
 
-    fun getImprovingImprovement(tile: Tile, civInfo: Civilization): String? {
+    /** @return Of all the potential improvements in [getImprovements], the first this [civ] can actually build, if any. */
+    fun getImprovingImprovement(tile: Tile, civ: Civilization): String? {
         return getImprovements().firstOrNull {
-            tile.improvementFunctions.canBuildImprovement(civInfo.gameInfo.ruleset.tileImprovements[it]!!, civInfo)
+            tile.improvementFunctions.canBuildImprovement(civ.gameInfo.ruleset.tileImprovements[it]!!, civ)
         }
+    }
+
+    fun matchesFilter(filter: String) = when (filter) {
+        name -> true
+        "any" -> true
+        resourceType.name -> true
+        in uniques -> true
+        else -> improvementStats?.any { filter == it.key.name } == true
+    }
+
+    fun generatesNaturallyOn(tile: Tile): Boolean {
+        if (tile.lastTerrain.name !in terrainsCanBeFoundOn) return false
+        val stateForConditionals = StateForConditionals(tile = tile)
+        if (hasUnique(UniqueType.NoNaturalGeneration, stateForConditionals)) return false
+        if (tile.allTerrains.any { it.hasUnique(UniqueType.BlocksResources, stateForConditionals) }) return false
+
+        if (tile.temperature!=null && tile.humidity!=null) // Only works when in map generation
+            for (unique in getMatchingUniques(UniqueType.TileGenerationConditions, stateForConditionals)){
+                if (tile.temperature!! !in unique.params[0].toDouble() .. unique.params[1].toDouble()) return false
+                if (tile.humidity!! !in unique.params[2].toDouble() .. unique.params[3].toDouble()) return false
+            }
+
+        return true
     }
 
     fun isStockpiled() = hasUnique(UniqueType.Stockpiled)
@@ -143,5 +209,4 @@ class TileResource : RulesetStatsObject() {
         var default: Int = 2
         var abundant: Int = 3
     }
-
 }

@@ -1,95 +1,95 @@
 package com.unciv.ui.screens.worldscreen.mainmenu
 
-import com.badlogic.gdx.Gdx
-import com.unciv.UncivGame
-import com.unciv.models.metadata.GameSetupInfo
-import com.unciv.ui.screens.civilopediascreen.CivilopediaScreen
-import com.unciv.ui.screens.newgamescreen.NewGameScreen
-import com.unciv.ui.popups.options.addMusicControls
+import com.badlogic.gdx.scenes.scene2d.Actor
+import com.badlogic.gdx.scenes.scene2d.ui.Cell
+import com.unciv.ui.components.input.KeyboardBinding
+import com.unciv.ui.components.input.onLongPress
 import com.unciv.ui.popups.Popup
 import com.unciv.ui.screens.savescreens.LoadGameScreen
-import com.unciv.ui.screens.savescreens.SaveGameScreen
 import com.unciv.ui.screens.victoryscreen.VictoryScreen
 import com.unciv.ui.screens.worldscreen.WorldScreen
 
-class WorldScreenMenuPopup(val worldScreen: WorldScreen) : Popup(worldScreen) {
+/** The in-game menu called from the "Hamburger" button top-left
+ *
+ *  Popup automatically opens as soon as it's initialized
+ */
+class WorldScreenMenuPopup(
+    val worldScreen: WorldScreen,
+    expertMode: Boolean = false
+) : Popup(worldScreen, scrollable = Scrollability.All) {
+    private val singleColumn: Boolean
+    private fun <T: Actor?> Cell<T>.nextColumn() {
+        if (!singleColumn && column == 0) return
+        row()
+    }
+
     init {
+        worldScreen.autoPlay.stopAutoPlay()
         defaults().fillX()
 
-        addButton("Main menu") {
+        val showSave = !worldScreen.gameInfo.gameParameters.isOnlineMultiplayer
+        val showMusic = worldScreen.game.musicController.isMusicAvailable()
+        val showConsole = showSave && expertMode
+        val buttonCount = 8 + (if (showSave) 1 else 0) + (if (showMusic) 1 else 0) + (if (showConsole) 1 else 0)
+
+        val emptyPrefHeight = this.prefHeight
+        val firstCell = addButton("Main menu") {
             worldScreen.game.goToMainMenu()
-        }.row()
-        addButton("Civilopedia") {
+        }
+        singleColumn = worldScreen.isCrampedPortrait() ||
+            2 * prefWidth > maxPopupWidth ||  // Very coarse: Assume width of translated "Main menu" is representative
+            buttonCount * (prefHeight - emptyPrefHeight) + emptyPrefHeight < maxPopupHeight
+        firstCell.nextColumn()
+
+        addButton("Civilopedia", KeyboardBinding.Civilopedia) {
             close()
-            worldScreen.game.pushScreen(CivilopediaScreen(worldScreen.gameInfo.ruleset))
-        }.row()
-        addButton("Save game") {
-            close()
-            worldScreen.game.pushScreen(SaveGameScreen(worldScreen.gameInfo))
-        }.row()
-        addButton("Load game") {
+            worldScreen.openCivilopedia()
+        }.nextColumn()
+        if (showSave)
+            addButton("Save game", KeyboardBinding.SaveGame) {
+                close()
+                worldScreen.openSaveGameScreen()
+            }.nextColumn()
+        addButton("Load game", KeyboardBinding.LoadGame) {
             close()
             worldScreen.game.pushScreen(LoadGameScreen())
-        }.row()
-
-        addButton("Start new game") {
+        }.nextColumn()
+        addButton("Start new game", KeyboardBinding.NewGame) {
             close()
-            val newGameSetupInfo = GameSetupInfo(worldScreen.gameInfo)
-            newGameSetupInfo.mapParameters.reseed()
-            val newGameScreen = NewGameScreen(newGameSetupInfo)
-            worldScreen.game.pushScreen(newGameScreen)
-        }.row()
-
-        addButton("Victory status") {
+            worldScreen.openNewGameScreen()
+        }.nextColumn()
+        addButton("Victory status", KeyboardBinding.VictoryScreen) {
             close()
             worldScreen.game.pushScreen(VictoryScreen(worldScreen))
-        }.row()
-        addButton("Options") {
+        }.nextColumn()
+        val optionsCell = addButton("Options", KeyboardBinding.Options) {
             close()
             worldScreen.openOptionsPopup()
-        }.row()
+        }
+        optionsCell.actor.onLongPress {
+            close()
+            worldScreen.openOptionsPopup(withDebug = true)
+        }
+        optionsCell.nextColumn()
         addButton("Community") {
             close()
             WorldScreenCommunityPopup(worldScreen).open(force = true)
-        }.row()
-        addButton("Music") {
-            close()
-            WorldScreenMusicButton(worldScreen).open(force = true)
-        }.row()
-        addCloseButton()
+        }.nextColumn()
+        if (showMusic)
+            addButton("Music", KeyboardBinding.MusicPlayer) {
+                close()
+                WorldScreenMusicPopup(worldScreen).open(force = true)
+            }.nextColumn()
+
+        if (showConsole)
+            addButton("Developer Console", KeyboardBinding.DeveloperConsole) {
+                close()
+                worldScreen.openDeveloperConsole()
+            }.nextColumn()
+
+        addCloseButton().run { colspan(if (singleColumn || column == 1) 1 else 2) }
         pack()
-    }
-}
 
-class WorldScreenCommunityPopup(val worldScreen: WorldScreen) : Popup(worldScreen) {
-    init {
-        defaults().fillX()
-        addButton("Discord") {
-            Gdx.net.openURI("https://discord.gg/bjrB4Xw")
-            close()
-        }.row()
-
-        addButton("Github") {
-            Gdx.net.openURI("https://github.com/yairm210/Unciv")
-            close()
-        }.row()
-
-        addButton("Reddit") {
-            Gdx.net.openURI("https://www.reddit.com/r/Unciv/")
-            close()
-        }.row()
-
-        addCloseButton()
-    }
-}
-
-class WorldScreenMusicButton(val worldScreen: WorldScreen) : Popup(worldScreen) {
-    init {
-        val musicController = UncivGame.Current.musicController
-        val settings = UncivGame.Current.settings
-
-        defaults().fillX()
-        addMusicControls(this, settings, musicController)
-        addCloseButton().colspan(2)
+        open(force = true)
     }
 }

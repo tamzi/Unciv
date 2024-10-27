@@ -1,14 +1,15 @@
 package com.unciv.ui.components.extensions
 
-import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Input
 import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.graphics.Pixmap
+import com.badlogic.gdx.graphics.TextureData
+import com.badlogic.gdx.graphics.glutils.FileTextureData
+import com.badlogic.gdx.graphics.glutils.PixmapTextureData
 import com.badlogic.gdx.math.Rectangle
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.Group
-import com.badlogic.gdx.scenes.scene2d.InputEvent
-import com.badlogic.gdx.scenes.scene2d.InputListener
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Button
@@ -18,29 +19,27 @@ import com.badlogic.gdx.scenes.scene2d.ui.CheckBox
 import com.badlogic.gdx.scenes.scene2d.ui.Image
 import com.badlogic.gdx.scenes.scene2d.ui.ImageButton
 import com.badlogic.gdx.scenes.scene2d.ui.Label
+import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
+import com.badlogic.gdx.scenes.scene2d.ui.SelectBox
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton.TextButtonStyle
 import com.badlogic.gdx.scenes.scene2d.ui.WidgetGroup
-import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
-import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
-import com.badlogic.gdx.scenes.scene2d.utils.Disableable
 import com.badlogic.gdx.utils.Align
+import com.badlogic.gdx.utils.Array
 import com.unciv.Constants
-import com.unciv.models.UncivSound
 import com.unciv.models.translations.tr
-import com.unciv.ui.audio.SoundPlayer
-import com.unciv.ui.components.Fonts
-import com.unciv.ui.components.KeyCharAndCode
-import com.unciv.ui.components.KeyShortcutDispatcher
-import com.unciv.ui.components.KeyboardBinding
 import com.unciv.ui.components.extensions.GdxKeyCodeFixes.DEL
 import com.unciv.ui.components.extensions.GdxKeyCodeFixes.toString
 import com.unciv.ui.components.extensions.GdxKeyCodeFixes.valueOf
+import com.unciv.ui.components.fonts.Fonts
+import com.unciv.ui.components.input.KeyCharAndCode
+import com.unciv.ui.components.input.keyShortcuts
+import com.unciv.ui.components.input.onActivation
+import com.unciv.ui.components.input.onChange
 import com.unciv.ui.images.IconCircleGroup
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.screens.basescreen.BaseScreen
-import com.unciv.utils.Concurrency
 
 /**
  * Collection of extension functions mostly for libGdx widgets
@@ -51,9 +50,11 @@ private class RestorableTextButtonStyle(
     val restoreStyle: ButtonStyle
 ) : TextButtonStyle(baseStyle)
 
+//todo ButtonStyle *does* have a `disabled` Drawable, and Button ignores touches in disabled state anyway - all this is a wrong approach
 /** Disable a [Button] by setting its [touchable][Button.touchable] and [style][Button.style] properties. */
 fun Button.disable() {
     touchable = Touchable.disabled
+    isDisabled = true
     val oldStyle = style
     if (oldStyle is RestorableTextButtonStyle) return
     val disabledStyle = BaseScreen.skin.get("disabled", TextButtonStyle::class.java)
@@ -65,6 +66,7 @@ fun Button.enable() {
     if (oldStyle is RestorableTextButtonStyle) {
         style = oldStyle.restoreStyle
     }
+    isDisabled = false
     touchable = Touchable.enabled
 }
 /** Enable or disable a [Button] by setting its [touchable][Button.touchable] and [style][Button.style] properties,
@@ -97,178 +99,6 @@ fun Color.darken(t: Float): Color = Color(this).lerp(Color.BLACK, t)
 fun Color.brighten(t: Float): Color = Color(this).lerp(Color.WHITE, t)
 
 
-/**
- * Simple subclass of [KeyShortcutDispatcher] for which all shortcut actions default to
- * [activating][Actor.activate] the actor. However, other actions are possible too.
- */
-class ActorKeyShortcutDispatcher internal constructor(val actor: Actor): KeyShortcutDispatcher() {
-    fun add(shortcut: KeyShortcut?) = add(shortcut) { actor.activate() }
-    fun add(binding: KeyboardBinding, priority: Int = 1) = add(binding, priority) { actor.activate() }
-    fun add(key: KeyCharAndCode?) = add(key) { actor.activate() }
-    fun add(char: Char?) = add(char) { actor.activate() }
-    fun add(keyCode: Int?) = add(keyCode) { actor.activate() }
-
-    override fun isActive(): Boolean = actor.isActive()
-}
-
-
-private class ActorAttachments private constructor(actor: Actor) {
-    companion object {
-        fun getOrNull(actor: Actor): ActorAttachments? {
-            return actor.userObject as ActorAttachments?
-        }
-
-        fun get(actor: Actor): ActorAttachments {
-            if (actor.userObject == null)
-                actor.userObject = ActorAttachments(actor)
-            return getOrNull(actor)!!
-        }
-    }
-
-    val actor
-        // Since 'keyShortcuts' has it anyway.
-        get() = keyShortcuts.actor
-
-    private lateinit var activationActions: MutableList<() -> Unit>
-    private var clickActivationListener: ClickListener? = null
-
-    val keyShortcuts = ActorKeyShortcutDispatcher(actor)
-
-    fun activate() {
-        if (this::activationActions.isInitialized) {
-            for (action in activationActions)
-                action()
-        }
-    }
-
-    fun addActivationAction(action: () -> Unit) {
-        if (!this::activationActions.isInitialized) activationActions = mutableListOf()
-        activationActions.add(action)
-
-        if (clickActivationListener == null) {
-            clickActivationListener = object: ClickListener() {
-                override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                    actor.activate()
-                }
-            }
-            actor.addListener(clickActivationListener)
-        }
-    }
-
-    fun removeActivationAction(action: () -> Unit) {
-        if (!this::activationActions.isInitialized) return
-        activationActions.remove(action)
-        if (activationActions.none() && clickActivationListener != null) {
-            actor.removeListener(clickActivationListener)
-            clickActivationListener = null
-        }
-    }
-}
-
-
-fun Actor.addActivationAction(action: (() -> Unit)?) {
-    if (action != null)
-        ActorAttachments.get(this).addActivationAction(action)
-}
-
-fun Actor.removeActivationAction(action: (() -> Unit)?) {
-    if (action != null)
-        ActorAttachments.getOrNull(this)?.removeActivationAction(action)
-}
-
-fun Actor.isActive(): Boolean = isVisible && ((this as? Disableable)?.isDisabled != true)
-
-fun Actor.activate() {
-    if (isActive())
-        ActorAttachments.getOrNull(this)?.activate()
-}
-
-val Actor.keyShortcutsOrNull
-    get() = ActorAttachments.getOrNull(this)?.keyShortcuts
-val Actor.keyShortcuts
-    get() = ActorAttachments.get(this).keyShortcuts
-
-fun Actor.onActivation(sound: UncivSound = UncivSound.Click, action: () -> Unit): Actor {
-    addActivationAction {
-        Concurrency.run("Sound") { SoundPlayer.play(sound) }
-        action()
-    }
-    return this
-}
-
-fun Actor.onActivation(action: () -> Unit): Actor = onActivation(UncivSound.Click, action)
-
-
-enum class DispatcherVetoResult { Accept, Skip, SkipWithChildren }
-typealias DispatcherVetoer = (associatedActor: Actor?, keyDispatcher: KeyShortcutDispatcher?) -> DispatcherVetoResult
-
-/**
- * Install shortcut dispatcher for this stage. It activates all actions associated with the
- * pressed key in [additionalShortcuts] (if specified) and all actors in the stage. It is
- * possible to temporarily disable or veto some shortcut dispatchers by passing an appropriate
- * [dispatcherVetoerCreator] function. This function may return a [DispatcherVetoer], which
- * will then be used to evaluate all shortcut sources in the stage. This two-step vetoing
- * mechanism allows the callback ([dispatcherVetoerCreator]) perform expensive preparations
- * only one per keypress (doing them in the returned [DispatcherVetoer] would instead be once
- * per keypress/actor combination).
- */
-fun Stage.installShortcutDispatcher(additionalShortcuts: KeyShortcutDispatcher? = null, dispatcherVetoerCreator: (() -> DispatcherVetoer?)? = null) {
-    addListener(object: InputListener() {
-        override fun keyDown(event: InputEvent?, keycode: Int): Boolean {
-            val key = when {
-                event == null ->
-                    KeyCharAndCode.UNKNOWN
-                Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT) ||Gdx.input.isKeyPressed(Input.Keys.CONTROL_RIGHT) ->
-                    KeyCharAndCode.ctrlFromCode(event.keyCode)
-                else ->
-                    KeyCharAndCode(event.keyCode)
-            }
-
-            if (key != KeyCharAndCode.UNKNOWN) {
-                var dispatcherVetoer = when { dispatcherVetoerCreator != null -> dispatcherVetoerCreator() else -> null }
-                if (dispatcherVetoer == null) dispatcherVetoer = { _, _ -> DispatcherVetoResult.Accept }
-
-                if (activate(key, dispatcherVetoer))
-                    return true
-                // Make both Enter keys equivalent.
-                if ((key == KeyCharAndCode.NUMPAD_ENTER && activate(KeyCharAndCode.RETURN, dispatcherVetoer))
-                    || (key == KeyCharAndCode.RETURN && activate(KeyCharAndCode.NUMPAD_ENTER, dispatcherVetoer)))
-                    return true
-                // Likewise always match Back to ESC.
-                if ((key == KeyCharAndCode.ESC && activate(KeyCharAndCode.BACK, dispatcherVetoer))
-                    || (key == KeyCharAndCode.BACK && activate(KeyCharAndCode.ESC, dispatcherVetoer)))
-                    return true
-            }
-
-            return false
-        }
-
-        private fun activate(key: KeyCharAndCode, dispatcherVetoer: DispatcherVetoer): Boolean {
-            val shortcutResolver = KeyShortcutDispatcher.Resolver(key)
-            val pendingActors = ArrayDeque<Actor>(actors.toList())
-
-            if (additionalShortcuts != null && dispatcherVetoer(null, additionalShortcuts) == DispatcherVetoResult.Accept)
-                shortcutResolver.updateFor(additionalShortcuts)
-
-            while (pendingActors.any()) {
-                val actor = pendingActors.removeFirst()
-                val shortcuts = actor.keyShortcutsOrNull
-                val vetoResult = dispatcherVetoer(actor, shortcuts)
-
-                if (shortcuts != null && vetoResult == DispatcherVetoResult.Accept)
-                    shortcutResolver.updateFor(shortcuts)
-                if (actor is Group && vetoResult != DispatcherVetoResult.SkipWithChildren)
-                    pendingActors.addAll(actor.children)
-            }
-
-            for (action in shortcutResolver.triggeredActions)
-                action()
-            return shortcutResolver.triggeredActions.any()
-        }
-    })
-}
-
-
 fun Actor.centerX(parent: Actor) { x = parent.width / 2 - width / 2 }
 fun Actor.centerY(parent: Actor) { y = parent.height / 2 - height / 2 }
 fun Actor.center(parent: Actor) { centerX(parent); centerY(parent) }
@@ -277,85 +107,20 @@ fun Actor.centerX(parent: Stage) { x = parent.width / 2 - width / 2 }
 fun Actor.centerY(parent: Stage) { y = parent.height / 2 - height / 2 }
 fun Actor.center(parent: Stage) { centerX(parent); centerY(parent) }
 
-class ClickListenerInstance(val sound: UncivSound, val function: (event: InputEvent?, x: Float, y: Float) -> Unit, val tapCount: Int)
 
-class OnClickListener(val sound: UncivSound = UncivSound.Click,
-                      val function: (event: InputEvent?, x: Float, y: Float) -> Unit,
-                      tapCount: Int = 1,
-                      tapInterval: Float = 0.0f): ClickListener() {
-
-    private val clickFunctions = mutableMapOf<Int, ClickListenerInstance>()
-
-    init {
-        setTapCountInterval(tapInterval)
-        clickFunctions[tapCount] = ClickListenerInstance(sound, function, tapCount)
-    }
-
-    fun addClickFunction(sound: UncivSound = UncivSound.Click, tapCount: Int, function: (event: InputEvent?, x: Float, y: Float) -> Unit) {
-        clickFunctions[tapCount] = ClickListenerInstance(sound, function, tapCount)
-    }
-
-    override fun clicked(event: InputEvent?, x: Float, y: Float) {
-        var effectiveTapCount = tapCount
-        if (clickFunctions[effectiveTapCount] == null) {
-            effectiveTapCount = clickFunctions.keys.filter { it < tapCount }.maxOrNull() ?: return // happens if there's a double (or more) click function but no single click
-        }
-        val clickInstance = clickFunctions[effectiveTapCount]!!
-        Concurrency.run("Sound") { SoundPlayer.play(clickInstance.sound) }
-        val func = clickInstance.function
-        func(event, x, y)
-    }
-}
-
-/** same as [onClick], but sends the [InputEvent] and coordinates along */
-fun Actor.onClickEvent(sound: UncivSound = UncivSound.Click,
-                       tapCount: Int = 1,
-                       tapInterval: Float = 0.0f,
-                       function: (event: InputEvent?, x: Float, y: Float) -> Unit) {
-    val previousListener = this.listeners.firstOrNull { it is OnClickListener }
-    if (previousListener != null && previousListener is OnClickListener) {
-        previousListener.addClickFunction(sound, tapCount, function)
-        previousListener.setTapCountInterval(tapInterval)
-    } else {
-        this.addListener(OnClickListener(sound, function, tapCount, tapInterval))
-    }
-}
-
-// If there are other buttons that require special clicks then we'll have an onclick that will accept a string parameter, no worries
-fun Actor.onClick(sound: UncivSound = UncivSound.Click, tapCount: Int = 1, tapInterval: Float = 0.0f, function: () -> Unit) {
-    onClickEvent(sound, tapCount, tapInterval) { _, _, _ -> function() }
-}
-
-fun Actor.onClick(function: () -> Unit): Actor {
-    onClick(UncivSound.Click, 1, 0f, function)
-    return this
-}
-
-fun Actor.onDoubleClick(sound: UncivSound = UncivSound.Click, tapInterval: Float = 0.25f, function: () -> Unit): Actor {
-    onClick(sound, 2, tapInterval, function)
-    return this
-}
-
-class OnChangeListener(val function: (event: ChangeEvent?) -> Unit):ChangeListener(){
-    override fun changed(event: ChangeEvent?, actor: Actor?) {
-        function(event)
-    }
-}
-
-fun Actor.onChange(function: (event: ChangeListener.ChangeEvent?) -> Unit): Actor {
-    this.addListener(OnChangeListener(function))
-    return this
-}
-
-fun Actor.surroundWithCircle(size: Float, resizeActor: Boolean = true,
-                             color: Color = Color.WHITE, circleImageLocation:String = "OtherIcons/Circle"): IconCircleGroup {
+fun Actor.surroundWithCircle(
+    size: Float,
+    resizeActor: Boolean = true,
+    color: Color = Color.WHITE,
+    circleImageLocation: String = ImageGetter.circleLocation
+): IconCircleGroup {
     return IconCircleGroup(size, this, resizeActor, color, circleImageLocation)
 }
 
 fun Actor.surroundWithThinCircle(color: Color=Color.BLACK): IconCircleGroup = surroundWithCircle(width+2f, false, color)
 
 
-fun Actor.addBorder(size:Float, color: Color, expandCell:Boolean = false): Table {
+fun Actor.addBorder(size: Float, color: Color, expandCell: Boolean = false): Table {
     val table = Table()
     table.pad(size)
     table.background = BaseScreen.skinStrings.getUiBackground("General/Border", tintColor = color)
@@ -376,9 +141,14 @@ fun Actor.getAscendant(predicate: (Actor) -> Boolean): Actor? {
     return null
 }
 
+/** Gets the nearest parent of this actor that is a [T], or null if none of its parents is of that type. */
+inline fun <reified T> Actor.getAscendant(): T? {
+    return  getAscendant { it is T } as? T
+}
+
 /** The actors bounding box in stage coordinates */
 val Actor.stageBoundingBox: Rectangle get() {
-    val bottomLeft = localToStageCoordinates(Vector2(0f, 0f))
+    val bottomLeft = localToStageCoordinates(Vector2.Zero.cpy())
     val topRight = localToStageCoordinates(Vector2(width, height))
     return Rectangle(
         bottomLeft.x,
@@ -415,7 +185,7 @@ fun Rectangle.getOverlap(other: Rectangle): Rectangle? {
 val Rectangle.top get() = y + height
 val Rectangle.right get() = x + width
 
-fun Group.addBorderAllowOpacity(size:Float, color: Color): Group {
+fun Group.addBorderAllowOpacity(size: Float, color: Color): Group {
     val group = this
     fun getTopBottomBorder() = ImageGetter.getDot(color).apply { width=group.width; height=size }
     addActor(getTopBottomBorder().apply { setPosition(0f, group.height, Align.topLeft) })
@@ -466,10 +236,20 @@ fun <T : Actor> Cell<T>.pad(vertical: Float, horizontal: Float): Cell<T> {
     return pad(vertical, horizontal, vertical, horizontal)
 }
 
+fun <T> SelectBox<T>.setItems(newItems: Collection<T>){
+    val array = Array<T>()
+    newItems.forEach { array.add(it) }
+    items = array
+}
+
 /** Sets both the width and height to [size] */
 fun Image.setSize(size: Float) {
     setSize(size, size)
 }
+
+/** Proxy for [ScrollPane.scrollTo] using the [bounds][Actor.setBounds] of a given [actor] for its parameters */
+fun ScrollPane.scrollTo(actor: Actor, center: Boolean = false) =
+    scrollTo(actor.x, actor.y, actor.width, actor.height, center, center)
 
 /** Translate a [String] and make a [TextButton] widget from it */
 fun String.toTextButton(style: TextButtonStyle? = null, hideIcons: Boolean = false): TextButton {
@@ -489,10 +269,28 @@ fun String.toImageButton(iconSize: Float, circleSize: Float, circleColor: Color,
     return button.surroundWithCircle( circleSize, false, circleColor)
 }
 
+/** Return a "close" button, visually a circle with "x" icon that goes red on mouse-over.
+ *
+ *  For use e.g. in the top-right corner of screens such as CivilopediaScreen.
+ *  Automatically binds the BACK key to the [action].
+ */
+fun getCloseButton(
+    size: Float = 50f,
+    iconSize: Float = size - 20f,
+    circleColor: Color = BaseScreen.skinStrings.skinConfig.baseColor,
+    overColor: Color = Color.RED,
+    action: () -> Unit
+): Group {
+    val closeButton = "OtherIcons/Close".toImageButton(iconSize, size, circleColor, overColor)
+    closeButton.onActivation(action)
+    closeButton.keyShortcuts.add(KeyCharAndCode.BACK)
+    return closeButton
+}
+
 /** Translate a [String] and make a [Label] widget from it */
 fun String.toLabel() = Label(this.tr(), BaseScreen.skin)
 /** Make a [Label] widget containing this [Int] as text */
-fun Int.toLabel() = this.toString().toLabel()
+fun Int.toLabel() = this.tr().toLabel()
 
 /** Translate a [String] and make a [Label] widget from it with a specified font color and size */
 fun String.toLabel(fontColor: Color = Color.WHITE,
@@ -535,7 +333,7 @@ fun Label.setFontColor(color: Color): Label {
 }
 
 /** Sets the font size on a [Label] and returns it to allow chaining */
-fun Label.setFontSize(size:Int): Label {
+fun Label.setFontSize(size: Int): Label {
     style = Label.LabelStyle(style)
     style.font = Fonts.font
     @Suppress("UsePropertyAccessSyntax") setStyle(style)
@@ -582,25 +380,87 @@ fun Group.addToCenter(actor: Actor) {
  *  | FORWARD_DEL | 112 | Del | Forward Delete | -1 | 112 |
  *
  *  This acts as proxy, you replace [Input.Keys] by [GdxKeyCodeFixes] and get sensible [DEL], [toString] and [valueOf].
+ *  Differences in behaviour: toString will return an empty string for un-mapped keycodes and UNKNOWN
+ *  instead of `null` or "Unknown" respectively,
+ *  valueOf will return UNKNOWN for un-mapped names or "" instead of -1.
  */
 @Suppress("GDX_KEYS_BUG", "MemberVisibilityCanBePrivate")
 object GdxKeyCodeFixes {
 
     const val DEL = Input.Keys.FORWARD_DEL
     const val BACKSPACE = Input.Keys.BACKSPACE
+    const val UNKNOWN = Input.Keys.UNKNOWN
 
     fun toString(keyCode: Int): String = when(keyCode) {
-        DEL -> "Del"
-        BACKSPACE -> "Backspace"
+        UNKNOWN -> ""
+        DEL -> "Del"  // Gdx would name this "Forward Delete"
+        BACKSPACE -> "Backspace"  // Gdx would name this "Delete"
         else -> Input.Keys.toString(keyCode)
+            ?: ""
     }
 
     fun valueOf(name: String): Int = when (name) {
+        "" -> UNKNOWN
         "Del" -> DEL
         "Backspace" -> BACKSPACE
-        else -> Input.Keys.valueOf(name)
+        else -> {
+            val code = Input.Keys.valueOf(name)
+            if (code == -1) UNKNOWN else code
+        }
     }
 }
 
+fun Input.isShiftKeyPressed() = isKeyPressed(Input.Keys.SHIFT_LEFT) || isKeyPressed(Input.Keys.SHIFT_RIGHT)
+fun Input.isControlKeyPressed() = isKeyPressed(Input.Keys.CONTROL_LEFT) || isKeyPressed(Input.Keys.CONTROL_RIGHT)
 fun Input.areSecretKeysPressed() = isKeyPressed(Input.Keys.SHIFT_RIGHT) &&
         (isKeyPressed(Input.Keys.CONTROL_RIGHT) || isKeyPressed(Input.Keys.ALT_RIGHT))
+
+/** Sets first row cell's minWidth to the max of the widths of that column over all given tables
+ *
+ * Notes:
+ * - This aligns columns only if the tables are arranged vertically with equal X coordinates.
+ * - first table determines columns processed, all others must have at least the same column count.
+ * - Tables are left as needsLayout==true, so while equal width is ensured, you may have to pack if you want to see the value before this is rendered.
+ * - Note: The receiver <Group> isn't actually needed except to make sure the arguments are descendants.
+ */
+fun equalizeColumns(vararg tables: Table) {
+    for (table in tables) {
+        table.packIfNeeded()
+    }
+    val columns = tables.first().columns
+    check(tables.all { it.columns >= columns }) {
+        "IPageExtensions.equalizeColumns needs all tables to have at least the same number of columns as the first one"
+    }
+
+    val widths = (0 until columns)
+        .mapTo(ArrayList(columns)) { column ->
+            tables.maxOf { it.getColumnWidth(column) }
+        }
+    for (table in tables) {
+        for (column in 0 until columns)
+            table.cells[column].run {
+                if (actor == null)
+                // Empty cells ignore minWidth, so just doing Table.add() for an empty cell in the top row will break this. Fix!
+                    setActor<Label>("".toLabel())
+                else if (Align.isCenterHorizontal(align)) (actor as? Label)?.run {
+                    // minWidth acts like fillX, so Labels will fill and then left-align by default. Fix!
+                    if (!Align.isCenterHorizontal(labelAlign))
+                        setAlignment(Align.center)
+                }
+                minWidth(widths[column] - padLeft - padRight)
+            }
+        table.invalidate()
+    }
+}
+
+/** Retrieve a texture Pixmap without reload or ownership transfer, useable for read operations only.
+ *
+ *  (FileTextureData.consumePixmap forces a reload of the entire file - inefficient if we only want to look at pixel values) */
+fun TextureData.getReadonlyPixmap(): Pixmap {
+    if (!isPrepared) prepare()
+    if (this is PixmapTextureData) return consumePixmap()
+    if (this !is FileTextureData) throw TypeCastException("getReadonlyPixmap only works on file or pixmap based textures")
+    val field = FileTextureData::class.java.getDeclaredField("pixmap")
+    field.isAccessible = true
+    return field.get(this) as Pixmap
+}

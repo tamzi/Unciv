@@ -10,11 +10,11 @@ import org.junit.runner.RunWith
 @RunWith(GdxTestRunner::class)
 class UniqueErrorTests {
     @Test
-    fun testMultipleUniqueTypesSameText(){
+    fun testMultipleUniqueTypesSameText() {
         val textToUniqueType = HashMap<String, UniqueType>()
         var errors = false
-        for (uniqueType in UniqueType.values()){
-            if (textToUniqueType.containsKey(uniqueType.placeholderText)){
+        for (uniqueType in UniqueType.values()) {
+            if (textToUniqueType.containsKey(uniqueType.placeholderText)) {
                 println("UniqueTypes ${uniqueType.name} and ${textToUniqueType[uniqueType.placeholderText]!!.name} have the same text!")
                 errors = true
             }
@@ -35,7 +35,7 @@ class UniqueErrorTests {
         ruleset.modOptions.isBaseRuleset = true
 
         // Check mod links and ensure we don't get a crash, instead we get errors
-        val errors = ruleset.checkModLinks(false)
+        val errors = ruleset.getErrorList(false)
         assert(errors.isNotOK())
     }
 }

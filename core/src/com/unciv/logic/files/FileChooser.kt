@@ -16,22 +16,23 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.utils.Align
-import com.badlogic.gdx.utils.Array as GdxArray
 import com.unciv.Constants
+import com.unciv.UncivGame
 import com.unciv.models.UncivSound
 import com.unciv.models.translations.tr
-import com.unciv.ui.components.AutoScrollPane
-import com.unciv.ui.components.KeyboardBinding
-import com.unciv.ui.components.UncivTextField
+import com.unciv.ui.components.widgets.UncivTextField
 import com.unciv.ui.components.extensions.addSeparator
 import com.unciv.ui.components.extensions.isEnabled
-import com.unciv.ui.components.extensions.onChange
-import com.unciv.ui.components.extensions.onClick
-import com.unciv.ui.components.extensions.onDoubleClick
 import com.unciv.ui.components.extensions.toLabel
+import com.unciv.ui.components.input.onChange
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.components.input.onDoubleClick
+import com.unciv.ui.components.widgets.AutoScrollPane
+import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.popups.Popup
 import java.io.File
 import java.io.FileFilter
+import com.badlogic.gdx.utils.Array as GdxArray
 
 typealias ResultListener = (success: Boolean, file: FileHandle) -> Unit
 
@@ -47,7 +48,7 @@ open class FileChooser(
     title: String?,
     startFile: FileHandle? = null,
     private val resultListener: ResultListener? = null
-) : Popup(stageToShowOn, false) {
+) : Popup(stageToShowOn, Scrollability.None) {
     // config
     var filter = FileFilter { true }
         set(value) { field = value; resetList() }
@@ -65,7 +66,7 @@ open class FileChooser(
         }
 
     // components
-    private val fileNameInput = UncivTextField.create("Please enter a file name")
+    private val fileNameInput = UncivTextField("Please enter a file name")
     private val fileNameLabel = "File name:".toLabel()
     private val fileNameWrapper = Table().apply {
         defaults().space(10f)
@@ -88,7 +89,7 @@ open class FileChooser(
 
     // operational
     private val maxHeight = stageToShowOn.height * 0.6f
-    private val absoluteLocalPath = Gdx.files.local("").file().absoluteFile.canonicalPath
+    private val absoluteLocalPath = UncivGame.Current.files.getDataFolder().file().absoluteFile.canonicalPath
     private val absoluteExternalPath = if (Gdx.files.isExternalStorageAvailable)
             Gdx.files.external("").file().absoluteFile.canonicalPath
         else "/\\/\\/"  // impossible placeholder
@@ -123,26 +124,31 @@ open class FileChooser(
 
     init {
         innerTable.top().left()
-        innerTable.touchable = Touchable.enabled
 
         fileList.selection.setProgrammaticChangeEvents(false)
-        fileNameInput.setTextFieldListener { textField, _ -> result = textField.text }
+        fileNameInput.setTextFieldListener { textField, _ ->
+            result = textField.text
+            enableOKButton()
+        }
+        fileNameInput.setTextFieldFilter { _, char ->
+            char != File.separatorChar
+        }
 
         if (title != null) {
             addGoodSizedLabel(title).colspan(2).center().row()
-            innerTable.addSeparator(height = 1f)
+            addSeparator(height = 1f)
         }
         add(pathLabelWrapper).colspan(2).fillX().row()
-        innerTable.addSeparator(Color.GRAY, height = 1f)
+        addSeparator(Color.GRAY, height = 1f)
         add(fileScroll).colspan(2).fill().row()
-        innerTable.addSeparator(height = 1f)
-        fileNameCell = innerTable.add().colspan(2).growX()
-        innerTable.row()
+        addSeparator(height = 1f)
+        fileNameCell = add().colspan(2).growX()
+        row()
 
-        addCloseButton("Cancel", KeyboardBinding.Cancel) {
+        addCloseButton(Constants.cancel) {
             reportResult(false)
         }
-        okButton = addOKButton(Constants.OK, KeyboardBinding.Confirm) {
+        okButton = addOKButton(Constants.OK) {
             reportResult(true)
         }.actor
         equalizeLastTwoButtonWidths()
@@ -176,7 +182,18 @@ open class FileChooser(
     override fun getMaxHeight() = maxHeight
 
     private fun reportResult(success: Boolean) {
-        resultListener?.invoke(success, getResult())
+        val file = getResult()
+        if (!(success && fileNameEnabled && file.exists())) {
+            resultListener?.invoke(success, file)
+            return
+        }
+        ConfirmPopup(stageToShowOn, "Do you want to overwrite ${file.name()}?", "Overwrite",
+            restoreDefault = {
+                resultListener?.invoke(false, file)
+            }, action = {
+                resultListener?.invoke(true, file)
+            }
+        ).open(true)
     }
 
     private fun makeAbsolute(file: FileHandle): FileHandle {
@@ -188,7 +205,7 @@ open class FileChooser(
         if (file.type() != Files.FileType.Absolute) return file
         val path = file.path()
         if (path.startsWith(absoluteLocalPath))
-            return Gdx.files.local(path.removePrefix(absoluteLocalPath).removePrefix(File.separator))
+            return UncivGame.Current.files.getLocalFile(path.removePrefix(absoluteLocalPath).removePrefix(File.separator))
         if (path.startsWith(absoluteExternalPath))
             return Gdx.files.external(path.removePrefix(absoluteExternalPath).removePrefix(File.separator))
         return file
@@ -201,7 +218,11 @@ open class FileChooser(
             startFile == null ->
                 Gdx.files.absolute(absoluteLocalPath)
             startFile.isDirectory -> startFile
-            else -> startFile.parent()
+            else -> {
+                fileNameInput.text = startFile.name()
+                result = startFile.name()
+                startFile.parent()
+            }
         }))
     }
 
@@ -254,12 +275,17 @@ open class FileChooser(
     }
 
     private fun enableOKButton() {
-        fun getEnable(): Boolean {
+        fun getLoadEnable(): Boolean {
             val file = fileList.selected?.file ?: return false
             if (!file.exists()) return false
             return (allowFolderSelect || !file.isDirectory)
         }
-        okButton.isEnabled = getEnable()
+        fun getSaveEnable(): Boolean {
+            if (currentDir?.exists() != true) return false
+            if (allowFolderSelect) return true
+            return result?.run { isEmpty() || startsWith(' ') || endsWith(' ') } == false
+        }
+        okButton.isEnabled = if (fileNameEnabled) getSaveEnable() else getLoadEnable()
     }
 
     fun setOkButtonText(text: String) {

@@ -6,14 +6,14 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.ui.images.ImageGetter
-import com.unciv.ui.screens.worldscreen.WorldMapHolder
-import com.unciv.ui.components.extensions.onClick
+import com.unciv.ui.screens.worldscreen.worldmap.WorldMapHolder
+import com.unciv.ui.components.input.onClick
 import com.unciv.ui.components.extensions.pad
 
 class IdleUnitButton (
     internal val unitTable: UnitTable,
     private val tileMapHolder: WorldMapHolder,
-    val previous:Boolean
+    val previous: Boolean
 ) : Table() {
 
     val image = ImageGetter.getImage("OtherIcons/BackArrow")
@@ -50,12 +50,12 @@ class IdleUnitButton (
         }
     }
 
-    fun enable(){
+    fun enable() {
         image.color= Color.WHITE
         touchable=Touchable.enabled
     }
 
-    fun disable(){
+    fun disable() {
         image.color= Color.GRAY
         touchable=Touchable.disabled
     }

@@ -6,8 +6,7 @@ import com.unciv.logic.IsPartOfGameInfoSerialization
 import com.unciv.ui.screens.victoryscreen.RankingType
 
 /** Records for each turn (key of outer map) what the score (value of inner map) was for each RankingType. */
-open class CivRankingHistory : HashMap<Int, Map<RankingType, Int>>(),
-    IsPartOfGameInfoSerialization {
+class CivRankingHistory : HashMap<Int, Map<RankingType, Int>>(), IsPartOfGameInfoSerialization, Json.Serializable {
 
     /**
      * Returns a shallow copy of this [CivRankingHistory] instance.
@@ -21,37 +20,51 @@ open class CivRankingHistory : HashMap<Int, Map<RankingType, Int>>(),
 
     fun recordRankingStats(civilization: Civilization) {
         this[civilization.gameInfo.turns] =
-                RankingType.values().associateWith { civilization.getStatForRanking(it) }
+                RankingType.entries.associateWith { civilization.getStatForRanking(it) }
     }
 
-    /** Custom Json formatter for a [CivRankingHistory].
-     *  Output looks like this: `statsHistory:{0:{S:50,G:120,...},1:{S:55,G:80,...}}`
+    /** Implement Json.Serializable
+     *  - Output looked like this: `statsHistory:{0:{S:50,G:120,...},1:{S:55,G:80,...}}`
+     *    (but now we have turned off simplifed json, so it's properly quoted)
+     *  - New format looks like this: `statsHistory:{0:"S50G120,...",1:"S55G80,..."}`
      */
-    class Serializer : Json.Serializer<CivRankingHistory> {
-        override fun write(json: Json, `object`: CivRankingHistory, knownType: Class<*>?) {
-            json.writeObjectStart()
-            for ((turn, rankings) in `object`) {
-                json.writeObjectStart(turn.toString())
-                for ((rankingType, score) in rankings) {
-                    json.writeValue(rankingType.idForSerialization, score)
-                }
-                json.writeObjectEnd()
-            }
-            json.writeObjectEnd()
-        }
+    override fun write(json: Json) {
+        for ((turn, rankings) in this) {
 
-        override fun read(json: Json, jsonData: JsonValue, type: Class<*>?) =
-                CivRankingHistory().apply {
-                    for (entry in jsonData) {
-                        val turn = entry.name.toInt()
-                        val rankings = mutableMapOf<RankingType, Int>()
-                        for (rankingEntry in entry) {
-                            val rankingType = RankingType.fromIdForSerialization(rankingEntry.name)
-                                ?: continue  // Silently drop unknown ranking types.
-                            rankings[rankingType] = rankingEntry.asInt()
-                        }
-                        this[turn] = rankings
-                    }
+            val rankingsString = rankings.entries
+                .joinToString("") { it.key.idForSerialization.toString() + it.value }
+            json.writeValue(turn.toString(), rankingsString)
+        }
+    }
+
+    private val nonNumber = Regex("[^\\d-]") // Rankings can be negative, so we can't just \D :(
+    override fun read(json: Json, jsonData: JsonValue) {
+        for (entry in jsonData) {
+            val turn = entry.name.toInt()
+            val rankings = mutableMapOf<RankingType, Int>()
+
+            if (entry.isString){
+                // split into key-value pairs by adding a space before every non-digit, and splitting by spaces
+                val pairs = entry.asString().replace(nonNumber, " $0").split(" ")
+                    .filter { it.isNotEmpty() } // remove empty entries
+
+                for (pair in pairs) {
+                    val rankingType = RankingType.fromIdForSerialization(pair[0]) ?: continue
+                    val value = pair.substring(1).toIntOrNull() ?: continue
+                    rankings[rankingType] = value
                 }
+                // New format
+            } else {
+                // Old format
+                for (rankingEntry in entry) {
+                    if (rankingEntry.name.length != 1) continue
+                    val rankingType = RankingType.fromIdForSerialization(rankingEntry.name[0])
+                        ?: continue  // Silently drop unknown ranking types.
+                    rankings[rankingType] = rankingEntry.asInt()
+                }
+            }
+
+            this[turn] = rankings
+        }
     }
 }

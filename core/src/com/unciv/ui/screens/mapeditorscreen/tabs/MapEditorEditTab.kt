@@ -3,26 +3,30 @@ package com.unciv.ui.screens.mapeditorscreen.tabs
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.Group
+import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Cell
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.unciv.logic.map.BFS
 import com.unciv.logic.map.mapgenerator.MapGenerationRandomness
+import com.unciv.logic.map.mapgenerator.MapGenerator
 import com.unciv.logic.map.mapgenerator.RiverGenerator
 import com.unciv.logic.map.tile.Tile
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.translations.tr
-import com.unciv.ui.components.KeyCharAndCode
-import com.unciv.ui.components.TabbedPager
-import com.unciv.ui.components.UncivSlider
 import com.unciv.ui.components.extensions.addSeparator
-import com.unciv.ui.components.extensions.keyShortcuts
 import com.unciv.ui.components.extensions.toLabel
+import com.unciv.ui.components.input.KeyCharAndCode
+import com.unciv.ui.components.input.KeyboardBinding
+import com.unciv.ui.components.input.keyShortcuts
+import com.unciv.ui.components.input.onActivation
+import com.unciv.ui.components.widgets.TabbedPager
+import com.unciv.ui.components.widgets.UncivSlider
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.popups.ToastPopup
 import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.ui.screens.civilopediascreen.FormattedLine
 import com.unciv.ui.screens.mapeditorscreen.MapEditorScreen
-import com.unciv.ui.screens.mapeditorscreen.TileInfoNormalizer
+import com.unciv.logic.map.tile.TileNormalizer
 import com.unciv.ui.screens.mapeditorscreen.tabs.MapEditorOptionsTab.TileMatchFuzziness
 import com.unciv.utils.Log
 
@@ -103,10 +107,10 @@ class MapEditorEditTab(
             minimumWidth = subTabsWidth,
             maximumWidth = subTabsWidth,
             headerPadding = 5f,
-            capacity = AllEditSubTabs.values().size
+            capacity = AllEditSubTabs.entries.size
         )
 
-        for (page in AllEditSubTabs.values()) {
+        for (page in AllEditSubTabs.entries) {
             // Empty tabs with placeholders, filled when activated()
             subTabs.addPage(page.caption, Group(), ImageGetter.getImage(page.icon), 20f,
                 shortcutKey = KeyCharAndCode(page.key), disabled = true)
@@ -135,28 +139,37 @@ class MapEditorEditTab(
 
     private fun selectPage(index: Int) = subTabs.selectPage(index)
 
-    fun setBrush(name: String, icon: String, isRemove: Boolean = false, applyAction: (Tile)->Unit) {
-        brushHandlerType = BrushHandlerType.Tile
-        brushCell.setActor(FormattedLine(name, icon = icon, iconCrossed = isRemove).render(0f))
+    private fun linkCivilopedia(brushActor: Actor, link: String) {
+        if (link.isEmpty()) return
+        brushActor.touchable = Touchable.enabled
+        // As so often, doing the binding separately to avoid the tooltip
+        brushActor.onActivation {
+            editorScreen.openCivilopedia(link)
+        }
+        brushActor.keyShortcuts.add(KeyboardBinding.Civilopedia)
+    }
+
+    // "Normal" setBrush overload, using named RulesetObject icon
+    fun setBrush(name: String, icon: String, handlerType: BrushHandlerType = BrushHandlerType.Tile,
+                 pediaLink: String = icon, isRemove: Boolean = false,
+                 applyAction: (Tile)->Unit) {
+        brushHandlerType = handlerType
+        val brushActor = FormattedLine(name, icon = icon, iconCrossed = isRemove).render(0f)
+        linkCivilopedia(brushActor, pediaLink)
+        brushCell.setActor(brushActor)
         brushAction = applyAction
     }
-    private fun setBrush(name: String, icon: Actor, applyAction: (Tile)->Unit) {
-        brushHandlerType = BrushHandlerType.Tile
-        val line = Table().apply {
+    
+    // Helper overload for brushes using icons not existing as RulesetObject
+    fun setBrush(handlerType: BrushHandlerType, name: String, icon: Actor, pediaLink: String, applyAction: (Tile)->Unit) {
+        brushHandlerType = handlerType
+        val brushActor = Table().apply {
             add(icon).padRight(10f)
             add(name.toLabel())
         }
-        brushCell.setActor(line)
+        linkCivilopedia(brushActor, pediaLink)
+        brushCell.setActor(brushActor)
         brushAction = applyAction
-    }
-    fun setBrush(handlerType: BrushHandlerType, name: String, icon: String,
-                 isRemove: Boolean = false, applyAction: (Tile)->Unit) {
-        setBrush(name, icon, isRemove, applyAction)
-        brushHandlerType = handlerType
-    }
-    fun setBrush(handlerType: BrushHandlerType, name: String, icon: Actor, applyAction: (Tile)->Unit) {
-        setBrush(name, icon, applyAction)
-        brushHandlerType = handlerType
     }
 
     override fun activated(index: Int, caption: String, pager: TabbedPager) {
@@ -164,7 +177,7 @@ class MapEditorEditTab(
             // ruleset has changed
             ruleset = editorScreen.ruleset
             ImageGetter.setNewRuleset(ruleset)
-            for (page in AllEditSubTabs.values()) {
+            for (page in AllEditSubTabs.entries) {
                 val tab = page.instantiate(this, ruleset)
                 subTabs.replacePage(page.caption, tab)
                 subTabs.setPageDisabled(page.caption, (tab as IMapEditorEditSubTabs).isDisabled())
@@ -211,7 +224,7 @@ class MapEditorEditTab(
             riverEndTile = tile
             if (riverStartTile != null) return paintRiverFromTo()
         }
-        tilesToHighlight.forEach { editorScreen.highlightTile(it, Color.BLUE) }
+        for (tileToHighlight in tilesToHighlight) editorScreen.highlightTile(tileToHighlight, Color.BLUE)
     }
     private fun paintRiverFromTo() {
         val resultingTiles = mutableSetOf<Tile>()
@@ -219,6 +232,7 @@ class MapEditorEditTab(
         try {
             val riverGenerator = RiverGenerator(editorScreen.tileMap, randomness, ruleset)
             riverGenerator.spawnRiver(riverStartTile!!, riverEndTile!!, resultingTiles)
+            MapGenerator(ruleset).convertTerrains(resultingTiles)
         } catch (ex: Exception) {
             Log.error("Exception while generating rivers", ex)
             ToastPopup("River generation failed!", editorScreen)
@@ -226,7 +240,7 @@ class MapEditorEditTab(
         riverStartTile = null
         riverEndTile = null
         editorScreen.isDirty = true
-        resultingTiles.forEach { editorScreen.updateAndHighlight(it, Color.SKY) }
+        for (tile in resultingTiles) editorScreen.updateAndHighlight(tile, Color.SKY)
     }
 
     internal fun paintTilesWithBrush(tile: Tile) {
@@ -234,41 +248,31 @@ class MapEditorEditTab(
             if (brushSize == -1) {
                 val bfs = BFS(tile) { it.isSimilarEnough(tile) }
                 bfs.stepToEnd()
-                bfs.getReachedTiles().asSequence()
+                bfs.getReachedTiles().toSet()
             } else {
-                tile.getTilesInDistance(brushSize - 1)
+                tile.getTilesInDistance(brushSize - 1).toSet()
             }
-        tiles.forEach {
+        
+        for (tileToPaint in tiles) {
             when (brushHandlerType) {
-                BrushHandlerType.Direct -> directPaintTile(it)
-                BrushHandlerType.Tile -> paintTile(it)
-                BrushHandlerType.Road -> roadPaintTile(it)
-                BrushHandlerType.River -> riverPaintTile(it)
+                BrushHandlerType.Direct -> directPaintTile(tileToPaint)
+                BrushHandlerType.River -> directPaintTile(tileToPaint)
+                BrushHandlerType.Tile -> paintTile(tileToPaint)
+                BrushHandlerType.Road -> paintTile(tileToPaint)
                 else -> {} // other cases can't reach here
             }
         }
+        
+        // Adjacent tiles could have images changed as well, due to rivers/edge tiles/roads
+        val tilesToUpdate = tiles.flatMap { it.neighbors + it }.toSet()
+        for (tileToUpdate in tilesToUpdate) editorScreen.updateTile(tileToUpdate)
     }
 
     /** Used for starting locations - no temp tile as brushAction needs to access tile.tileMap */
     private fun directPaintTile(tile: Tile) {
         brushAction(tile)
         editorScreen.isDirty = true
-        editorScreen.updateAndHighlight(tile)
-    }
-
-    /** Used for rivers - same as directPaintTile but may need to update 10,12 and 2 o'clock neighbor tiles too */
-    private fun riverPaintTile(tile: Tile) {
-        directPaintTile(tile)
-        tile.neighbors.forEach {
-            if (it.position.x > tile.position.x || it.position.y > tile.position.y)
-                editorScreen.updateTile(it)
-        }
-    }
-
-    // Used for roads - same as paintTile but all neighbors need TileGroup.update too
-    private fun roadPaintTile(tile: Tile) {
-        if (!paintTile(tile)) return
-        tile.neighbors.forEach { editorScreen.updateTile(it) }
+        editorScreen.highlightTile(tile)
     }
 
     /** apply brush to a single tile */
@@ -288,7 +292,7 @@ class MapEditorEditTab(
 
         brushAction(tile)
         tile.setTerrainTransients()
-        TileInfoNormalizer.normalizeToRuleset(tile, ruleset)
+        TileNormalizer.normalizeToRuleset(tile, ruleset)
         if (!paintedTile.isSimilarEnough(tile)) {
             // revert tile to original state
             tile.applyFrom(savedTile)
@@ -298,7 +302,7 @@ class MapEditorEditTab(
         if (tile.naturalWonder != savedTile.naturalWonder)
             editorScreen.naturalWondersNeedRefresh = true
         editorScreen.isDirty = true
-        editorScreen.updateAndHighlight(tile)
+        editorScreen.highlightTile(tile)
         return true
     }
 
@@ -333,7 +337,7 @@ class MapEditorEditTab(
 
     companion object {
         private fun getBrushTip(value: Float, abbreviate: Boolean = false) = when {
-            value <= 5f -> value.toInt().toString()
+            value <= 5f -> value.toInt().tr()
             abbreviate -> "Floodfill_Abbreviation"
             else -> "Floodfill"
         }

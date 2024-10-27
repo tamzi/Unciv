@@ -2,22 +2,22 @@ package com.unciv.ui.screens.worldscreen
 
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.unciv.UncivGame
 import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.civilization.NotificationIcon
 import com.unciv.logic.trade.TradeLogic
 import com.unciv.logic.trade.TradeOffer
-import com.unciv.logic.trade.TradeType
+import com.unciv.logic.trade.TradeOfferType
 import com.unciv.models.translations.tr
+import com.unciv.ui.components.extensions.pad
+import com.unciv.ui.components.extensions.toLabel
+import com.unciv.ui.components.input.KeyCharAndCode
 import com.unciv.ui.popups.Popup
 import com.unciv.ui.screens.diplomacyscreen.DiplomacyScreen
 import com.unciv.ui.screens.diplomacyscreen.LeaderIntroTable
-import com.unciv.ui.components.KeyCharAndCode
-import com.unciv.ui.components.extensions.addSeparator
-import com.unciv.ui.components.extensions.pad
-import com.unciv.ui.components.extensions.toLabel
 import kotlin.math.max
 import kotlin.math.min
-import com.unciv.ui.components.AutoScrollPane as ScrollPane
+import com.unciv.ui.components.widgets.AutoScrollPane as ScrollPane
 
 /* TODO:
     different Notification wording for peace treaties?
@@ -32,7 +32,7 @@ import com.unciv.ui.components.AutoScrollPane as ScrollPane
  *
  * @param worldScreen The parent screen
  */
-class TradePopup(worldScreen: WorldScreen): Popup(worldScreen){
+class TradePopup(worldScreen: WorldScreen) : Popup(worldScreen) {
     val viewingCiv = worldScreen.viewingCiv
     val tradeRequest = viewingCiv.tradeRequests.first()
 
@@ -57,7 +57,7 @@ class TradePopup(worldScreen: WorldScreen): Popup(worldScreen){
 
         fun getOfferText(offer:TradeOffer): String {
             var tradeText = offer.getOfferText()
-            if (offer.type == TradeType.Luxury_Resource || offer.type == TradeType.Strategic_Resource)
+            if (offer.type == TradeOfferType.Luxury_Resource || offer.type == TradeOfferType.Strategic_Resource)
                 tradeText += "\n" + "Owned by you: [${ourResources[offer.name]}]".tr()
             return tradeText
         }
@@ -77,6 +77,8 @@ class TradePopup(worldScreen: WorldScreen): Popup(worldScreen){
 
         addSeparator(Color.DARK_GRAY, height = 1f)
 
+        // Starting playback here assumes the TradePopup is shown immediately
+        UncivGame.Current.musicController.playVoice("${requestingCiv.civName}.tradeRequest")
         addGoodSizedLabel(nation.tradeRequest).pad(15f).row()
 
         addButton("Sounds good!", 'y') {
@@ -107,7 +109,7 @@ class TradePopup(worldScreen: WorldScreen): Popup(worldScreen){
         super.close()
     }
 
-    class TradeThanksPopup(leaderIntroTable: LeaderIntroTable, worldScreen: WorldScreen): Popup(worldScreen) {
+    class TradeThanksPopup(leaderIntroTable: LeaderIntroTable, worldScreen: WorldScreen) : Popup(worldScreen) {
         init {
             add(leaderIntroTable)
             addSeparator().padBottom(15f)

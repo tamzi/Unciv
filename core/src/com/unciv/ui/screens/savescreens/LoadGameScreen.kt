@@ -7,41 +7,45 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.utils.SerializationException
 import com.unciv.Constants
+import com.unciv.UncivGame
 import com.unciv.logic.MissingModsException
-import com.unciv.logic.files.UncivFiles
 import com.unciv.logic.UncivShowableException
+import com.unciv.logic.files.PlatformSaverLoader
+import com.unciv.logic.files.UncivFiles
+import com.unciv.logic.github.Github
+import com.unciv.logic.github.Github.folderNameToRepoName
 import com.unciv.models.ruleset.RulesetCache
 import com.unciv.models.translations.tr
-import com.unciv.ui.screens.pickerscreens.Github
-import com.unciv.ui.popups.Popup
-import com.unciv.ui.popups.ToastPopup
-import com.unciv.ui.components.KeyCharAndCode
 import com.unciv.ui.components.UncivTooltip.Companion.addTooltip
 import com.unciv.ui.components.extensions.disable
 import com.unciv.ui.components.extensions.enable
 import com.unciv.ui.components.extensions.isEnabled
-import com.unciv.ui.components.extensions.keyShortcuts
-import com.unciv.ui.components.extensions.onActivation
-import com.unciv.ui.components.extensions.onClick
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
-import com.unciv.utils.Log
+import com.unciv.ui.components.input.KeyCharAndCode
+import com.unciv.ui.components.input.keyShortcuts
+import com.unciv.ui.components.input.onActivation
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.popups.LoadingPopup
+import com.unciv.ui.popups.Popup
+import com.unciv.ui.popups.ToastPopup
 import com.unciv.utils.Concurrency
+import com.unciv.utils.Log
 import com.unciv.utils.launchOnGLThread
 import java.io.FileNotFoundException
 
 class LoadGameScreen : LoadOrSaveScreen() {
     private val copySavedGameToClipboardButton = getCopyExistingSaveToClipboardButton()
-    private val errorLabel = "".toLabel(Color.RED).apply { isVisible = false }
+    private val errorLabel = "".toLabel(Color.RED)
     private val loadMissingModsButton = getLoadMissingModsButton()
-    private var missingModsToLoad = ""
+    private var missingModsToLoad: Iterable<String> = emptyList()
 
     companion object {
         private const val loadGame = "Load game"
         private const val loadFromCustomLocation = "Load from custom location"
         private const val loadFromClipboard = "Load copied data"
         private const val copyExistingSaveToClipboard = "Copy saved game to clipboard"
-        private const val downloadMissingMods = "Download missing mods"
+        internal const val downloadMissingMods = "Download missing mods"
 
         /** Gets a translated exception message to show to the user.
          * @return The first returned value is the message, the second is signifying if the user can likely fix this problem. */
@@ -60,23 +64,45 @@ class LoadGameScreen : LoadOrSaveScreen() {
                     isUserFixable = false
                 }
                 is FileNotFoundException -> {
-                    if (ex.cause?.message?.contains("Permission denied") == true) {
+                    isUserFixable = if (ex.cause?.message?.contains("Permission denied") == true) {
                         errorText.append("You do not have sufficient permissions to access the file.".tr())
-                        isUserFixable = true
+                        true
                     } else {
-                        isUserFixable = false
+                        false
                     }
                 }
                 else -> {
-                    errorText.append("Unhandled problem, [${ex::class.simpleName} ${ex.localizedMessage}]".tr())
+                    errorText.append("Unhandled problem, [${ex::class.simpleName} ${ex.stackTraceToString()}]".tr())
                     isUserFixable = false
                 }
             }
             return Pair(errorText.toString(), isUserFixable)
         }
+
+        fun loadMissingMods(missingMods: Iterable<String>, onModDownloaded:(String)->Unit, onCompleted:()->Unit){
+
+            for (rawName in missingMods) {
+                val modName = rawName.folderNameToRepoName().lowercase()
+                val repos = Github.tryGetGithubReposWithTopic(10, 1, modName)
+                    ?: throw UncivShowableException("Could not download mod list.")
+                val repo = repos.items.firstOrNull { it.name.lowercase() == modName }
+                    ?: throw UncivShowableException("Could not find a mod named \"[$modName]\".")
+                val modFolder = Github.downloadAndExtract(
+                    repo,
+                    UncivGame.Current.files.getModsFolder()
+                )
+                    ?: throw Exception("Unexpected 404 error") // downloadAndExtract returns null for 404 errors and the like -> display something!
+                Github.rewriteModOptions(repo, modFolder)
+                onModDownloaded(repo.name)
+            }
+            onCompleted()
+        }
     }
 
     init {
+        errorLabel.isVisible = false
+        errorLabel.wrap = true
+
         setDefaultCloseAction()
         rightSideTable.initRightSideTable()
         rightSideButton.onActivation { onLoadGame() }
@@ -107,7 +133,7 @@ class LoadGameScreen : LoadOrSaveScreen() {
     private fun Table.initRightSideTable() {
         add(getLoadFromClipboardButton()).row()
         addLoadFromCustomLocationButton()
-        add(errorLabel).row()
+        add(errorLabel).width(stage.width / 2).row()
         add(loadMissingModsButton).row()
         add(deleteSaveButton).row()
         add(copySavedGameToClipboardButton).row()
@@ -116,14 +142,12 @@ class LoadGameScreen : LoadOrSaveScreen() {
 
     private fun onLoadGame() {
         if (selectedSave == null) return
-        val loadingPopup = Popup( this)
-        loadingPopup.addGoodSizedLabel(Constants.loading)
-        loadingPopup.open()
+        val loadingPopup = LoadingPopup(this)
         Concurrency.run(loadGame) {
             try {
                 // This is what can lead to ANRs - reading the file and setting the transients, that's why this is in another thread
                 val loadedGame = game.files.loadGameFromFile(selectedSave!!)
-                game.loadGame(loadedGame, true)
+                game.loadGame(loadedGame, callFromLoadScreen = true)
             } catch (notAPlayer: UncivShowableException) {
                 launchOnGLThread {
                     val (message) = getLoadExceptionMessage(notAPlayer)
@@ -142,13 +166,14 @@ class LoadGameScreen : LoadOrSaveScreen() {
     private fun getLoadFromClipboardButton(): TextButton {
         val pasteButton = loadFromClipboard.toTextButton()
         pasteButton.onActivation {
-            pasteButton.setText("Working...".tr())
+            if (!Gdx.app.clipboard.hasContents()) return@onActivation
+            pasteButton.setText(Constants.working.tr())
             pasteButton.disable()
             Concurrency.run(loadFromClipboard) {
                 try {
                     val clipboardContentsString = Gdx.app.clipboard.contents.trim()
                     val loadedGame = UncivFiles.gameInfoFromString(clipboardContentsString)
-                    game.loadGame(loadedGame, true)
+                    game.loadGame(loadedGame, callFromLoadScreen = true)
                 } catch (ex: Exception) {
                     launchOnGLThread { handleLoadGameException(ex, "Could not load game from clipboard!") }
                 } finally {
@@ -166,38 +191,44 @@ class LoadGameScreen : LoadOrSaveScreen() {
     }
 
     private fun Table.addLoadFromCustomLocationButton() {
-        val loadFromCustomLocation = loadFromCustomLocation.toTextButton()
-        loadFromCustomLocation.onClick {
+        val loadFromCustomLocationButton = loadFromCustomLocation.toTextButton()
+        loadFromCustomLocationButton.onClick {
             errorLabel.isVisible = false
-            loadFromCustomLocation.setText(Constants.loading.tr())
-            loadFromCustomLocation.disable()
-            Concurrency.run(Companion.loadFromCustomLocation) {
+            loadFromCustomLocationButton.setText(Constants.loading.tr())
+            loadFromCustomLocationButton.disable()
+            Concurrency.run(loadFromCustomLocation) {
                 game.files.loadGameFromCustomLocation(
                     {
-                        Concurrency.run { game.loadGame(it, true) }
-                        loadFromCustomLocation.enable()
+                        Concurrency.run { game.loadGame(it, callFromLoadScreen = true) }
                     },
                     {
-                        handleLoadGameException(it, "Could not load game from custom location!")
-                        loadFromCustomLocation.enable()
+                        if (it !is PlatformSaverLoader.Cancelled)
+                            handleLoadGameException(it, "Could not load game from custom location!")
+                        loadFromCustomLocationButton.setText(loadFromCustomLocation.tr())
+                        loadFromCustomLocationButton.enable()
                     }
                 )
             }
         }
-        add(loadFromCustomLocation).row()
+        add(loadFromCustomLocationButton).row()
     }
 
     private fun getCopyExistingSaveToClipboardButton(): TextButton {
         val copyButton = copyExistingSaveToClipboard.toTextButton()
         copyButton.onActivation {
-            if (selectedSave == null) return@onActivation
+            val file = selectedSave ?: return@onActivation
             Concurrency.run(copyExistingSaveToClipboard) {
                 try {
-                    val gameText = selectedSave!!.readString()
+                    val gameText = file.readString()
                     Gdx.app.clipboard.contents = if (gameText[0] == '{') Gzip.zip(gameText) else gameText
+                    launchOnGLThread {
+                        ToastPopup("'[${file.name()}]' copied to clipboard!", this@LoadGameScreen)
+                    }
                 } catch (ex: Throwable) {
                     ex.printStackTrace()
-                    ToastPopup("Could not save game to clipboard!", this@LoadGameScreen)
+                    launchOnGLThread {
+                        ToastPopup("Could not save game to clipboard!", this@LoadGameScreen)
+                    }
                 }
             }
         }
@@ -221,17 +252,17 @@ class LoadGameScreen : LoadOrSaveScreen() {
         Log.error("Error while loading game", ex)
         val (errorText, isUserFixable) = getLoadExceptionMessage(ex, primaryText)
 
-        if (!isUserFixable) {
-            val cantLoadGamePopup = Popup(this@LoadGameScreen)
-            cantLoadGamePopup.addGoodSizedLabel("It looks like your saved game can't be loaded!").row()
-            cantLoadGamePopup.addGoodSizedLabel("If you could copy your game data (\"Copy saved game to clipboard\" - ").row()
-            cantLoadGamePopup.addGoodSizedLabel("  paste into an email to yairm210@hotmail.com)").row()
-            cantLoadGamePopup.addGoodSizedLabel("I could maybe help you figure out what went wrong, since this isn't supposed to happen!").row()
-            cantLoadGamePopup.addCloseButton()
-            cantLoadGamePopup.open()
-        }
-
         Concurrency.runOnGLThread {
+            if (!isUserFixable) {
+                val cantLoadGamePopup = Popup(this@LoadGameScreen)
+                cantLoadGamePopup.addGoodSizedLabel("It looks like your saved game can't be loaded!").row()
+                cantLoadGamePopup.addGoodSizedLabel("If you could copy your game data (\"Copy saved game to clipboard\" - ").row()
+                cantLoadGamePopup.addGoodSizedLabel("  paste into an email to yairm210@hotmail.com)").row()
+                cantLoadGamePopup.addGoodSizedLabel("I could maybe help you figure out what went wrong, since this isn't supposed to happen!").row()
+                cantLoadGamePopup.addCloseButton()
+                cantLoadGamePopup.open()
+            }
+
             errorLabel.setText(errorText)
             errorLabel.isVisible = true
             if (ex is MissingModsException) {
@@ -246,36 +277,31 @@ class LoadGameScreen : LoadOrSaveScreen() {
         descriptionLabel.setText(Constants.loading.tr())
         Concurrency.runOnNonDaemonThreadPool(downloadMissingMods) {
             try {
-                val mods = missingModsToLoad.replace(' ', '-').lowercase().splitToSequence(",-")
-                for (modName in mods) {
-                    val repos = Github.tryGetGithubReposWithTopic(10, 1, modName)
-                        ?: throw UncivShowableException("Could not download mod list.")
-                    val repo = repos.items.firstOrNull { it.name.lowercase() == modName }
-                        ?: throw UncivShowableException("Could not find a mod named \"[$modName]\".")
-                    val modFolder = Github.downloadAndExtract(
-                        repo,
-                        Gdx.files.local("mods")
-                    )
-                        ?: throw Exception("downloadAndExtract returns null for 404 errors and the like") // downloadAndExtract returns null for 404 errors and the like -> display something!
-                    Github.rewriteModOptions(repo, modFolder)
-                    val labelText = descriptionLabel.text // Surprise - a StringBuilder
-                    labelText.appendLine()
-                    labelText.append("[${repo.name}] Downloaded!".tr())
-                    launchOnGLThread { descriptionLabel.setText(labelText) }
-                }
-                launchOnGLThread {
-                    RulesetCache.loadRulesets()
-                    missingModsToLoad = ""
-                    loadMissingModsButton.isVisible = false
-                    errorLabel.isVisible = false
-                    rightSideTable.pack()
-                    ToastPopup("Missing mods are downloaded successfully.", this@LoadGameScreen)
-                }
+                Companion.loadMissingMods(missingModsToLoad,
+                    onModDownloaded = {
+                        val labelText = descriptionLabel.text // Surprise - a StringBuilder
+                        labelText.appendLine()
+                        labelText.append("[$it] Downloaded!".tr())
+                        launchOnGLThread { descriptionLabel.setText(labelText) }
+                    },
+                    onCompleted = {
+                        launchOnGLThread {
+                            RulesetCache.loadRulesets()
+                            missingModsToLoad = emptyList()
+                            loadMissingModsButton.isVisible = false
+                            errorLabel.isVisible = false
+                            rightSideTable.pack()
+                            ToastPopup("Missing mods are downloaded successfully.", this@LoadGameScreen)
+                        }
+                    }
+                )
             } catch (ex: Exception) {
                 handleLoadGameException(ex, "Could not load the missing mods!")
             } finally {
-                loadMissingModsButton.isEnabled = true
-                descriptionLabel.setText("")
+                launchOnGLThread {
+                    loadMissingModsButton.isEnabled = true
+                    descriptionLabel.setText("")
+                }
             }
         }
     }

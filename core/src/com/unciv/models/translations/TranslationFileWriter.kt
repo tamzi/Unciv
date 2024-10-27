@@ -2,14 +2,16 @@ package com.unciv.models.translations
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.files.FileHandle
+import com.unciv.UncivGame
 import com.unciv.json.fromJsonFile
 import com.unciv.json.json
 import com.unciv.logic.civilization.diplomacy.DiplomaticModifiers
-import com.unciv.logic.civilization.managers.SpyAction
+import com.unciv.models.SpyAction
 import com.unciv.models.metadata.BaseRuleset
-import com.unciv.models.metadata.LocaleCode
+import com.unciv.models.metadata.GameSettings.LocaleCode
 import com.unciv.models.ruleset.Belief
 import com.unciv.models.ruleset.Building
+import com.unciv.models.ruleset.Event
 import com.unciv.models.ruleset.GlobalUniques
 import com.unciv.models.ruleset.PolicyBranch
 import com.unciv.models.ruleset.Quest
@@ -35,7 +37,7 @@ import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.models.ruleset.unit.Promotion
 import com.unciv.models.ruleset.unit.UnitType
-import com.unciv.ui.components.KeyboardBinding
+import com.unciv.ui.components.input.KeyboardBinding
 import com.unciv.utils.Log
 import com.unciv.utils.debug
 import java.io.File
@@ -71,7 +73,7 @@ object TranslationFileWriter {
 
             // See #5168 for some background on this
             for ((modName, modTranslations) in translations.modsWithTranslations) {
-                val modFolder = Gdx.files.local("mods").child(modName)
+                val modFolder = UncivGame.Current.files.getModFolder(modName)
                 val modPercentages = generateTranslationFiles(modTranslations, modFolder, translations)
                 writeLanguagePercentages(modPercentages, modFolder)  // unused by the game but maybe helpful for the mod developer
             }
@@ -85,7 +87,7 @@ object TranslationFileWriter {
 
     private fun getFileHandle(modFolder: FileHandle?, fileLocation: String) =
             if (modFolder != null) modFolder.child(fileLocation)
-            else Gdx.files.local(fileLocation)
+            else UncivGame.Current.files.getLocalFile(fileLocation)
 
     /**
      * Writes new language files per Mod or for BaseRuleset - only each language that exists in [translations].
@@ -107,7 +109,7 @@ object TranslationFileWriter {
                 linesToTranslate.addAll(templateFile.reader(TranslationFileReader.charset).readLines())
 
             linesToTranslate += "\n\n#################### Lines from Unique Types #######################\n"
-            for (uniqueType in UniqueType.values()) {
+            for (uniqueType in UniqueType.entries) {
                 val deprecationAnnotation = uniqueType.getDeprecationAnnotation()
                 if (deprecationAnnotation != null) continue
                 if (uniqueType.flags.contains(UniqueFlag.HiddenToUsers)) continue
@@ -115,39 +117,37 @@ object TranslationFileWriter {
                 linesToTranslate += "${uniqueType.getTranslatable()} = "
             }
 
-            for (uniqueParameterType in UniqueParameterType.values()) {
+            for (uniqueParameterType in UniqueParameterType.entries) {
                 val strings = uniqueParameterType.getTranslationWriterStringsForOutput()
                 if (strings.isEmpty()) continue
                 linesToTranslate += "\n######### ${uniqueParameterType.displayName} ###########\n"
                 linesToTranslate.addAll(strings.map { "$it = " })
             }
 
-            for (uniqueTarget in UniqueTarget.values())
+            for (uniqueTarget in UniqueTarget.entries)
                 linesToTranslate += "$uniqueTarget = "
 
             linesToTranslate += "\n\n#################### Lines from spy actions #######################\n"
-            for (spyAction in SpyAction.values()) {
-                linesToTranslate += "$spyAction = "
-            }
+            for (spyAction in SpyAction.entries)
+                linesToTranslate += "${spyAction.displayString} = "
 
             linesToTranslate += "\n\n#################### Lines from diplomatic modifiers #######################\n"
-            for (diplomaticModifier in DiplomaticModifiers.values())
+            for (diplomaticModifier in DiplomaticModifiers.entries)
                 linesToTranslate += "${diplomaticModifier.text} = "
 
             linesToTranslate += "\n\n#################### Lines from key bindings #######################\n"
-            for (binding in KeyboardBinding.values()) {
-                linesToTranslate += "${binding.label} = "
-            }
+            for (bindingLabel in KeyboardBinding.getTranslationEntries())
+                linesToTranslate += "$bindingLabel = "
 
-            for (baseRuleset in BaseRuleset.values()) {
+            for (baseRuleset in BaseRuleset.entries) {
                 val generatedStringsFromBaseRuleset =
-                        GenerateStringsFromJSONs(Gdx.files.local("jsons/${baseRuleset.fullName}"))
+                        GenerateStringsFromJSONs(UncivGame.Current.files.getLocalFile("jsons/${baseRuleset.fullName}"))
                 for (entry in generatedStringsFromBaseRuleset)
                     fileNameToGeneratedStrings[entry.key + " from " + baseRuleset.fullName] = entry.value
             }
 
             // Tutorials reside one level above the base rulesets - if they were per-ruleset the following lines would be unnecessary
-            val tutorialStrings = GenerateStringsFromJSONs(Gdx.files.local("jsons")) { it.name == "Tutorials.json" }
+            val tutorialStrings = GenerateStringsFromJSONs(UncivGame.Current.files.getLocalFile("jsons")) { it.name == "Tutorials.json" }
             fileNameToGeneratedStrings["Tutorials"] = tutorialStrings.values.first()
         } else {
             fileNameToGeneratedStrings.putAll(GenerateStringsFromJSONs(modFolder.child("jsons")))
@@ -252,6 +252,7 @@ object TranslationFileWriter {
 
     private fun writeLanguagePercentages(percentages: HashMap<String, Int>, modFolder: FileHandle? = null) {
         val output = percentages.asSequence()
+            .sortedBy { it.key }
             .joinToString("\n", postfix = "\n") { "${it.key} = ${it.value}" }
         getFileHandle(modFolder, TranslationFileReader.percentagesFileLocation)
             .writeString(output, false)
@@ -311,8 +312,7 @@ object TranslationFileWriter {
                 val filename = jsonFile.nameWithoutExtension()
 
                 val javaClass = getJavaClassByName(filename)
-                if (javaClass == this.javaClass)
-                    continue // unknown JSON, let's skip it
+                    ?: continue // unknown JSON, let's skip it
 
                 val array = json().fromJsonFile(javaClass, jsonFile.path())
 
@@ -346,11 +346,11 @@ object TranslationFileWriter {
         }
 
         fun submitString(string: String, unique: Unique) {
-            if (unique.hasFlag(UniqueFlag.HiddenToUsers))
+            if (unique.isHiddenToUsers())
                 return // We don't need to translate this at all, not user-visible
 
             val stringToTranslate = string.removeConditionals()
-            for (conditional in unique.conditionals) {
+            for (conditional in unique.modifiers) {
                 submitString(conditional.text, conditional)
             }
 
@@ -359,19 +359,23 @@ object TranslationFileWriter {
                 return
             }
 
+            // Do simpler parameter numbering when typed, as the code below is susceptible to problems with nested brackets - UniqueTypes don't have them (yet)!
+            if (unique.type != null) {
+                for ((index, typeList) in unique.type.parameterTypeMap.withIndex()) {
+                    if (typeList.none { it in translatableUniqueParameterTypes }) continue
+                    // Unknown/Comment parameter contents better be offered to translators too
+                    resultStrings.add("${unique.params[index]} = ")
+                }
+                resultStrings.add("${unique.type.getTranslatable()} = ")
+                return
+            }
+
             val parameterNames = ArrayList<String>()
-            for ((index, parameter) in unique.params.withIndex()) {
-                val parameterName =
-                    if (unique.type != null) {
-                        val possibleParameterTypes = unique.type.parameterTypeMap[index]
-                        // for multiple types. will look like "[unitName/buildingName]"
-                        possibleParameterTypes.joinToString("/") { it.parameterName }
-                    } else {
-                        UniqueParameterType.guessTypeForTranslationWriter(parameter, ruleset).parameterName
-                    }
+            for (parameter in unique.params) {
+                val parameterName = UniqueParameterType.guessTypeForTranslationWriter(parameter, ruleset).parameterName
                 parameterNames.addNumberedParameter(parameterName)
-                if (parameterName == UniqueParameterType.Unknown.parameterName)
-                    resultStrings.add("$parameter = ")  // Unknown parameter contents better be offered to translators too
+                if (translatableUniqueParameterTypes.none { it.parameterName == parameterName }) continue
+                resultStrings.add("$parameter = ")
             }
             resultStrings.add("${stringToTranslate.fillPlaceholders(*parameterNames.toTypedArray())} = ")
         }
@@ -420,7 +424,7 @@ object TranslationFileWriter {
                     // Promotion names are not uniques but since we did the "[unitName] ability"
                     // they need the "parameters" treatment too
                     // Same for victory milestones
-                    (field.name == "uniques" || field.name == "promotions" || field.name == "milestones")
+                    (field.name in fieldsToProcessParameters)
                             && (fieldValue is java.util.AbstractCollection<*>) ->
                         for (item in fieldValue)
                             if (item is String) submitString(item, Unique(item)) else serializeElement(item!!)
@@ -456,10 +460,24 @@ object TranslationFileWriter {
                 "RuinReward.uniques", "TerrainType.name",
                 "CityStateType.friendBonusUniques", "CityStateType.allyBonusUniques",
                 "Era.citySound",
+                "keyShortcut",
+                "Event.name" // Presently not shown anywhere
             )
 
             /** Specifies Enums where the name property _is_ translatable, by Class name */
             private val translatableEnumsSet = setOf("BeliefType")
+
+            /** Only these Unique parameter types will be offered as translatables - for all others it is expected their content
+             *  corresponds with a ruleset object name which will be made translatable by their actual json definition */
+            private val translatableUniqueParameterTypes = setOf(
+                UniqueParameterType.Unknown,
+                UniqueParameterType.Comment
+            )
+
+            private val fieldsToProcessParameters = setOf(
+                "uniques", "promotions", "milestones",
+                "triggeredUniques", "conditions"
+            )
 
             private fun isFieldTypeRelevant(type: Class<*>) =
                     type == String::class.java ||
@@ -481,13 +499,14 @@ object TranslationFileWriter {
                         (clazz.componentType?.simpleName ?: clazz.simpleName) + "." + field.name !in untranslatableFieldSet
             }
 
-            private fun getJavaClassByName(name: String): Class<Any> {
+            private fun getJavaClassByName(name: String): Class<Any>? {
                 return when (name) {
                     "Beliefs" -> emptyArray<Belief>().javaClass
                     "Buildings" -> emptyArray<Building>().javaClass
+                    "CityStateTypes" -> emptyArray<CityStateType>().javaClass
                     "Difficulties" -> emptyArray<Difficulty>().javaClass
                     "Eras" -> emptyArray<Era>().javaClass
-                    "Speeds" -> emptyArray<Speed>().javaClass
+                    "Events" -> emptyArray<Event>().javaClass
                     "GlobalUniques" -> GlobalUniques().javaClass
                     "Nations" -> emptyArray<Nation>().javaClass
                     "Policies" -> emptyArray<PolicyBranch>().javaClass
@@ -495,6 +514,7 @@ object TranslationFileWriter {
                     "Religions" -> emptyArray<String>().javaClass
                     "Ruins" -> emptyArray<RuinReward>().javaClass
                     "Specialists" -> emptyArray<Specialist>().javaClass
+                    "Speeds" -> emptyArray<Speed>().javaClass
                     "Techs" -> emptyArray<TechColumn>().javaClass
                     "Terrains" -> emptyArray<Terrain>().javaClass
                     "TileImprovements" -> emptyArray<TileImprovement>().javaClass
@@ -504,8 +524,7 @@ object TranslationFileWriter {
                     "Units" -> emptyArray<BaseUnit>().javaClass
                     "UnitTypes" -> emptyArray<UnitType>().javaClass
                     "VictoryTypes" -> emptyArray<Victory>().javaClass
-                    "CityStateTypes" -> emptyArray<CityStateType>().javaClass
-                    else -> this.javaClass // dummy value
+                    else -> null // dummy value
                 }
             }
         }
@@ -541,7 +560,7 @@ object TranslationFileWriter {
                 else -> translated
             }
             val localeCode = LocaleCode.valueOf(language.replace("_",""))
-            val path = fastlanePath + localeCode.language
+            val path = fastlanePath + (localeCode.trueLanguage ?: localeCode.language)
             File(path).mkdirs()
             File(path + File.separator + fileName).writeText(fileContent)
         }

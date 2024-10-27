@@ -10,10 +10,9 @@ import com.unciv.logic.map.tile.Tile
 import com.unciv.models.Counter
 import com.unciv.models.ruleset.unique.LocalUniqueCache
 import com.unciv.models.ruleset.unique.UniqueType
-import com.unciv.models.stats.Stat
 import com.unciv.ui.components.extensions.toPercent
-import com.unciv.ui.components.extensions.withItem
-import com.unciv.ui.components.extensions.withoutItem
+import com.unciv.utils.withItem
+import com.unciv.utils.withoutItem
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.pow
@@ -54,7 +53,7 @@ class CityPopulationManager : IsPartOfGameInfoSerialization {
 
         foodRequired *= city.civ.gameInfo.speed.modifier
 
-        if (city.civ.isCityState())
+        if (city.civ.isCityState)
             foodRequired *= 1.5f
         if (!city.civ.isHuman())
             foodRequired *= city.civ.gameInfo.getDifficulty().aiCityGrowthModifier
@@ -119,7 +118,7 @@ class CityPopulationManager : IsPartOfGameInfoSerialization {
                 .coerceAtMost(95)  // Try to avoid runaway food gain in mods, just in case
         foodStored += (foodNeededToGrow * percentOfFoodCarriedOver / 100f).toInt()
         addPopulation(1)
-        city.updateCitizens = true
+        city.shouldReassignPopulation = true
         city.civ.addNotification("[${city.name}] has grown!", city.location,
             NotificationCategory.Cities, NotificationIcon.Growth)
     }
@@ -132,6 +131,7 @@ class CityPopulationManager : IsPartOfGameInfoSerialization {
         val freePopulation = getFreePopulation()
         if (freePopulation < 0) {
             unassignExtraPopulation()
+            city.cityStats.update()
         } else {
             autoAssignPopulation()
         }
@@ -144,10 +144,14 @@ class CityPopulationManager : IsPartOfGameInfoSerialization {
         addPopulation(-population + count)
     }
 
+    /** Only assigns free population */
     internal fun autoAssignPopulation() {
-        city.cityStats.update()  // calculate current stats with current assignments
+        city.cityStats.update(updateCivStats = false)  // calculate current stats with current assignments
+        val freePopulation = getFreePopulation()
+        if (freePopulation <= 0) return
+
         val cityStats = city.cityStats.currentCityStats
-        city.currentGPPBonus = city.getGreatPersonPercentageBonus()  // pre-calculate
+        city.currentGPPBonus = city.getGreatPersonPercentageBonus()  // pre-calculate for use in Automation.rankSpecialist
         var specialistFoodBonus = 2f  // See CityStats.calcFoodEaten()
         for (unique in city.getMatchingUniques(UniqueType.FoodConsumptionBySpecialists))
             if (city.matchesFilter(unique.params[1]))
@@ -158,20 +162,30 @@ class CityPopulationManager : IsPartOfGameInfoSerialization {
             .filter { !it.isBlockaded() }.toList().asSequence()
 
         val localUniqueCache = LocalUniqueCache()
-        repeat(getFreePopulation()) {
+        // Calculate stats once - but the *ranking of those stats* is dynamic and depends on what the city needs
+        val tileStats = tilesToEvaluate
+                .filterNot { it.providesYield() }
+                .associateWith { it.stats.getTileStats(city, city.civ, localUniqueCache)}
+
+        val maxSpecialists = getMaxSpecialists().asSequence()
+
+        repeat(freePopulation) {
             //evaluate tiles
             val bestTileAndRank = tilesToEvaluate
-                    .filterNot { it.providesYield() }
-                    .associateWith { Automation.rankTileForCityWork(it, city, cityStats, localUniqueCache) }
-                    .maxByOrNull { it.value }
+                .filterNot { it.providesYield() } // Changes with every tile assigned
+                .associateWith { Automation.rankStatsForCityWork(tileStats[it]!!, city, false, localUniqueCache) }
+                // We need to make sure that we work the same tiles as last turn on a tile
+                // so that our workers know to prioritize this tile and don't move to the other tile
+                // This was just the easiest way I could think of.
+                .maxWithOrNull( compareBy({ it.value }, { it.key.longitude }, { it.key.latitude }))
             val bestTile = bestTileAndRank?.key
             val valueBestTile = bestTileAndRank?.value ?: 0f
 
             val bestJobAndRank = if (city.manualSpecialists) null
-                else getMaxSpecialists().asSequence()
-                    .filter { specialistAllocations[it.key]!! < it.value }
+                else maxSpecialists
+                    .filter { specialistAllocations[it.key] < it.value }
                     .map { it.key }
-                    .associateWith { Automation.rankSpecialist(it, city, cityStats, localUniqueCache) }
+                    .associateWith { Automation.rankSpecialist(it, city, localUniqueCache) }
                     .maxByOrNull { it.value }
             val bestJob = bestJobAndRank?.key
             val valueBestSpecialist = bestJobAndRank?.value ?: 0f
@@ -180,7 +194,7 @@ class CityPopulationManager : IsPartOfGameInfoSerialization {
             if (valueBestTile > valueBestSpecialist) {
                 if (bestTile != null) {
                     city.workedTiles = city.workedTiles.withItem(bestTile.position)
-                    cityStats.food += bestTile.stats.getTileStats(city, city.civ, localUniqueCache).food
+                    cityStats.food += tileStats[bestTile]!!.food
                 }
             } else if (bestJob != null) {
                 specialistAllocations.add(bestJob, 1)
@@ -190,7 +204,7 @@ class CityPopulationManager : IsPartOfGameInfoSerialization {
         city.cityStats.update()
     }
 
-    fun stopWorkingTile(position: Vector2){
+    fun stopWorkingTile(position: Vector2) {
         city.workedTiles = city.workedTiles.withoutItem(position)
         city.lockedTiles.remove(position)
     }
@@ -198,7 +212,7 @@ class CityPopulationManager : IsPartOfGameInfoSerialization {
     fun unassignExtraPopulation() {
         for (tile in city.workedTiles.map { city.tileMap[it] }) {
             if (tile.getOwner() != city.civ || tile.getWorkingCity() != city
-                    || tile.aerialDistanceTo(city.getCenterTile()) > 3)
+                    || tile.aerialDistanceTo(city.getCenterTile()) > city.getWorkRange())
                 city.population.stopWorkingTile(tile.position)
         }
 
@@ -216,19 +230,19 @@ class CityPopulationManager : IsPartOfGameInfoSerialization {
                 city.workedTiles.asSequence()
                         .map { city.tileMap[it] }
                         .minByOrNull {
-                            Automation.rankTileForCityWork(it, city, city.cityStats.currentCityStats, localUniqueCache)
+                            Automation.rankTileForCityWork(it, city, localUniqueCache)
                             +(if (it.isLocked()) 10 else 0)
                         }!!
             }
             val valueWorstTile = if (worstWorkedTile == null) 0f
-            else Automation.rankTileForCityWork(worstWorkedTile, city, city.cityStats.currentCityStats, localUniqueCache)
+            else Automation.rankTileForCityWork(worstWorkedTile, city, localUniqueCache)
 
             //evaluate specialists
             val worstAutoJob: String? = if (city.manualSpecialists) null else specialistAllocations.keys
-                    .minByOrNull { Automation.rankSpecialist(it, city, city.cityStats.currentCityStats, localUniqueCache) }
+                    .minByOrNull { Automation.rankSpecialist(it, city, localUniqueCache) }
             var valueWorstSpecialist = 0f
             if (worstAutoJob != null)
-                valueWorstSpecialist = Automation.rankSpecialist(worstAutoJob, city, city.cityStats.currentCityStats, localUniqueCache)
+                valueWorstSpecialist = Automation.rankSpecialist(worstAutoJob, city, localUniqueCache)
 
 
             // un-assign population
@@ -244,18 +258,16 @@ class CityPopulationManager : IsPartOfGameInfoSerialization {
                 worstAutoJob != null -> specialistAllocations.add(worstAutoJob, -1)
                 worstWorkedTile != null -> stopWorkingTile(worstWorkedTile.position)
                 else -> {
-                    // It happens when "cityInfo.manualSpecialists == true"
+                    // It happens when "city.manualSpecialists == true"
                     //  and population goes below the number of specialists, e.g. city is razing.
                     // Let's give a chance to do the work automatically at least.
                     val worstJob = specialistAllocations.keys.minByOrNull {
-                        Automation.rankSpecialist(it, city, city.cityStats.currentCityStats, localUniqueCache) }
+                        Automation.rankSpecialist(it, city, localUniqueCache) }
                         ?: break // sorry, we can do nothing about that
                     specialistAllocations.add(worstJob, -1)
                 }
             }
         }
-
-        city.cityStats.update()
     }
 
     fun getMaxSpecialists(): Counter<String> {

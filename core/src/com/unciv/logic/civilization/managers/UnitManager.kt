@@ -4,58 +4,75 @@ import com.badlogic.gdx.math.Vector2
 import com.unciv.UncivGame
 import com.unciv.logic.city.City
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.civilization.MapUnitAction
 import com.unciv.logic.civilization.NotificationCategory
+import com.unciv.logic.civilization.transients.CivInfoTransientCache
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.logic.map.tile.Tile
+import com.unciv.models.ruleset.unique.StateForConditionals
 import com.unciv.models.ruleset.unique.UniqueTriggerActivation
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.BaseUnit
 
-class UnitManager(val civInfo:Civilization) {
+class UnitManager(val civInfo: Civilization) {
 
     /**
-     * We never add or remove from here directly, could cause comodification problems.
-     * Instead, we create a copy list with the change, and replace this list.
-     * The other solution, casting toList() every "get", has a performance cost
+     *  All units of [civInfo], _ordered_.
+     *  Collection order and [nextPotentiallyDueAt] determine activation order when using "Next unit".
+     *
+     *  When loading a save, this is entirely rebuilt from Tile.*Unit.
+     *  * GameInfo.setTransients -> TileMap.setTransients -> Tile.setUnitTransients -> MapUnit.assignOwner -> [addUnit] (the MapUnit overload)
+     *
+     *  We never add or remove from here directly, could cause comodification problems.
+     *  Instead, we create a copy list with the change, and replace this list.
+     *  The other solution, casting toList() every "get", has a performance cost
      */
-    @Transient
     private var unitList = listOf<MapUnit>()
 
     /**
-     * Index in the unit list above of the unit that is potentially due and is next up for button "Next unit".
+     * Index in [unitList] of the [unit][MapUnit] that is potentially [due][MapUnit.due] and is next up for button "Next unit".
      */
-    @Transient
     private var nextPotentiallyDueAt = 0
 
+    /** Creates a new [MapUnit] and places it on the map.
+     *  @param  unitName The [BaseUnit] name to create a MapUnit instance of - auto-mapped to a nation equivalent if one exists
+     *  @param  city     The City to place the new unit in or near
+     *  @return          The new unit or `null` if unsuccessful (invalid unitName, no tile found where it could be placed, or civ has no cities)
+     */
     fun addUnit(unitName: String, city: City? = null): MapUnit? {
-        if (civInfo.cities.isEmpty()) return null
-        if (!civInfo.gameInfo.ruleset.units.containsKey(unitName)) return null
+        val unit = civInfo.gameInfo.ruleset.units[unitName] ?: return null
+        return addUnit(unit, city)
+    }
 
-        val cityToAddTo = city ?: civInfo.cities.random()
-        val unit = civInfo.getEquivalentUnit(unitName)
+    /** Creates a new [MapUnit] and places it on the map.
+     *  @param  baseUnit The [BaseUnit] to create a MapUnit instance of - auto-mapped to a nation equivalent if one exists
+     *  @param  city     The City to place the new unit in or near
+     *  @return          The new unit or `null` if unsuccessful (no tile found where it could be placed, or civ has no cities)
+     */
+    fun addUnit(baseUnit: BaseUnit, city: City? = null): MapUnit? {
+        if (civInfo.cities.isEmpty()) return null
+
+        val unit = civInfo.getEquivalentUnit(baseUnit)
+        val citiesNotInResistance = civInfo.cities.filterNot { it.isInResistance() }
+        
+        val cityToAddTo = when {
+            unit.isWaterUnit && (city == null || !city.isCoastal()) ->
+                citiesNotInResistance.filter { it.isCoastal() }.randomOrNull() ?:
+                civInfo.cities.filter { it.isCoastal() }.randomOrNull()
+            city != null -> city
+            else -> citiesNotInResistance.randomOrNull() ?: civInfo.cities.random()
+        } ?: return null // If we got a free water unit with no coastal city to place it in
         val placedUnit = placeUnitNearTile(cityToAddTo.location, unit.name)
         // silently bail if no tile to place the unit is found
             ?: return null
-        if (unit.isGreatPerson()) {
-            civInfo.addNotification("A [${unit.name}] has been born in [${cityToAddTo.name}]!", placedUnit.getTile().position, NotificationCategory.General, unit.name)
+        if (unit.isGreatPerson) {
+            civInfo.addNotification("A [${unit.name}] has been born in [${cityToAddTo.name}]!", MapUnitAction(placedUnit), NotificationCategory.General, unit.name)
         }
 
         if (placedUnit.hasUnique(UniqueType.ReligiousUnit) && civInfo.gameInfo.isReligionEnabled()) {
-            placedUnit.religion =
-                    when {
-                        placedUnit.hasUnique(UniqueType.TakeReligionOverBirthCity)
-                                && civInfo.religionManager.religion?.isMajorReligion() == true ->
-                            civInfo.religionManager.religion!!.name
-                        city != null -> city.cityConstructions.city.religion.getMajorityReligionName()
-                        else -> civInfo.religionManager.religion?.name
-                    }
-            placedUnit.setupAbilityUses(cityToAddTo)
-        }
-
-        for (unique in civInfo.getMatchingUniques(UniqueType.LandUnitsCrossTerrainAfterUnitGained)) {
-            if (unit.matchesFilter(unique.params[1])) {
-                civInfo.passThroughImpassableUnlocked = true    // Update the cached Boolean
-                civInfo.passableImpassables.add(unique.params[0])   // Add to list of passable impassables
+            if (!placedUnit.hasUnique(UniqueType.TakeReligionOverBirthCity)
+                || civInfo.religionManager.religion?.isMajorReligion() == false) {
+                placedUnit.religion = cityToAddTo.religion.getMajorityReligionName()
             }
         }
 
@@ -68,14 +85,41 @@ class UnitManager(val civInfo:Civilization) {
      * @return created [MapUnit] or null if no suitable location was found
      * */
     fun placeUnitNearTile(location: Vector2, unitName: String): MapUnit? {
-        val unit = civInfo.gameInfo.tileMap.placeUnitNearTile(location, unitName, civInfo)
+        val unit = civInfo.gameInfo.ruleset.units[unitName]!!
+        return placeUnitNearTile(location, unit)
+    }
+
+    /** Tries to place the a [baseUnit] unit into the [Tile] closest to the given the [location]
+     * @param location where to try to place the unit
+     * @param baseUnit [BaseUnit] to create and place
+     * @return created [MapUnit] or null if no suitable location was found
+     * */
+    fun placeUnitNearTile(location: Vector2, baseUnit: BaseUnit, unitId: Int? = null): MapUnit? {
+        val unit = civInfo.gameInfo.tileMap.placeUnitNearTile(location, baseUnit, civInfo, unitId)
 
         if (unit != null) {
+            val triggerNotificationText = "due to gaining a [${unit.name}]"
+            for (unique in unit.getUniques())
+                if (!unique.hasTriggerConditional() && unique.conditionalsApply(StateForConditionals(civInfo, unit = unit)))
+                    UniqueTriggerActivation.triggerUnique(unique, unit, triggerNotificationText = triggerNotificationText)
+
             for (unique in civInfo.getTriggeredUniques(UniqueType.TriggerUponGainingUnit))
-                if (unit.matchesFilter(unique.params[0]))
-                    UniqueTriggerActivation.triggerCivwideUnique(unique, civInfo)
-            if (unit.baseUnit.getResourceRequirementsPerTurn().isNotEmpty())
+                if (unique.getModifiers(UniqueType.TriggerUponGainingUnit).any { unit.matchesFilter(it.params[0]) })
+                    UniqueTriggerActivation.triggerUnique(unique, unit, triggerNotificationText = triggerNotificationText)
+
+            if (unit.getResourceRequirementsPerTurn().isNotEmpty())
                 civInfo.cache.updateCivResources()
+
+            for (unique in civInfo.getMatchingUniques(UniqueType.LandUnitsCrossTerrainAfterUnitGained)) {
+                if (unit.matchesFilter(unique.params[1])) {
+                    civInfo.passThroughImpassableUnlocked = true    // Update the cached Boolean
+                    civInfo.passableImpassables.add(unique.params[0])   // Add to list of passable impassables
+                }
+            }
+
+            if (unit.hasUnique(UniqueType.ReligiousUnit) && civInfo.gameInfo.isReligionEnabled()) {
+                unit.religion = civInfo.religionManager.religion?.name
+            }
         }
         return unit
     }
@@ -87,6 +131,11 @@ class UnitManager(val civInfo:Civilization) {
     // 'nextPotentiallyDueAt' unit is first here.
     private fun getCivUnitsStartingAtNextDue(): Sequence<MapUnit> = sequenceOf(unitList.subList(nextPotentiallyDueAt, unitList.size) + unitList.subList(0, nextPotentiallyDueAt)).flatten()
 
+    /** Assigns an existing [mapUnit] to this manager.
+     *
+     *  Used during load game via setTransients to regenerate a Civilization's list from the serialized Tile fields.
+     *  @param updateCivInfo When `true`, calls [updateStatsForNextTurn][Civilization.updateStatsForNextTurn] and possibly [updateCivResources][CivInfoTransientCache]
+     */
     fun addUnit(mapUnit: MapUnit, updateCivInfo: Boolean = true) {
         // Since we create a new list anyway (otherwise some concurrent modification
         // exception will happen), also rearrange existing units so that
@@ -101,7 +150,7 @@ class UnitManager(val civInfo:Civilization) {
             // Not relevant when updating Tile transients, since some info of the civ itself isn't yet available,
             // and in any case it'll be updated once civ info transients are
             civInfo.updateStatsForNextTurn() // unit upkeep
-            if (mapUnit.baseUnit.getResourceRequirementsPerTurn().isNotEmpty())
+            if (mapUnit.getResourceRequirementsPerTurn().isNotEmpty())
                 civInfo.cache.updateCivResources()
         }
     }
@@ -114,7 +163,7 @@ class UnitManager(val civInfo:Civilization) {
         nextPotentiallyDueAt = 0
 
         civInfo.updateStatsForNextTurn() // unit upkeep
-        if (mapUnit.baseUnit.getResourceRequirementsPerTurn().isNotEmpty())
+        if (mapUnit.getResourceRequirementsPerTurn().isNotEmpty())
             civInfo.cache.updateCivResources()
     }
 
@@ -123,6 +172,8 @@ class UnitManager(val civInfo:Civilization) {
     fun getDueUnits(): Sequence<MapUnit> = getCivUnitsStartingAtNextDue().filter { it.due && it.isIdle() }
 
     fun shouldGoToDueUnit() = UncivGame.Current.settings.checkForDueUnits && getDueUnits().any()
+
+    fun getUnitById(id: Int) = getCivUnits().firstOrNull { it.id == id }
 
     // Return the next due unit, but preferably not 'unitToSkip': this is returned only if it is the only remaining due unit.
     fun cycleThroughDueUnits(unitToSkip: MapUnit? = null): MapUnit? {

@@ -1,12 +1,16 @@
 package com.unciv.logic.city.managers
 
+import com.unciv.logic.city.City
 import com.unciv.logic.city.CityFlags
 import com.unciv.logic.city.CityFocus
-import com.unciv.logic.city.City
+import com.unciv.logic.civilization.CityAction
+import com.unciv.logic.civilization.LocationAction
 import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.civilization.NotificationIcon
+import com.unciv.logic.civilization.OverviewAction
 import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.unique.UniqueType
+import com.unciv.ui.screens.overviewscreen.EmpireOverviewCategories
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -17,7 +21,6 @@ class CityTurnManager(val city: City) {
         // Construct units at the beginning of the turn,
         // so they won't be generated out in the open and vulnerable to enemy attacks before you can control them
         city.cityConstructions.constructIfEnough()
-        city.cityConstructions.addFreeBuildings()
 
         city.tryUpdateRoadStatus()
         city.attackedThisTurn = false
@@ -29,11 +32,10 @@ class CityTurnManager(val city: City) {
         nextTurnFlags()
 
         if (city.isPuppet) {
-            city.cityAIFocus = CityFocus.GoldFocus
+            city.setCityFocus(CityFocus.GoldFocus)
             city.reassignAllPopulation()
-        } else if (city.updateCitizens) {
+        } else if (city.shouldReassignPopulation) {
             city.reassignPopulation()  // includes cityStats.update
-            city.updateCitizens = false
         } else
             city.cityStats.update()
 
@@ -47,11 +49,11 @@ class CityTurnManager(val city: City) {
 
     private fun tryWeLoveTheKing() {
         if (city.demandedResource == "") return
-        if (city.civ.getCivResourcesByName()[city.demandedResource]!! > 0) {
+        if (city.getAvailableResourceAmount(city.demandedResource) > 0) {
             city.setFlag(CityFlags.WeLoveTheKing, 20 + 1) // +1 because it will be decremented by 1 in the same startTurn()
             city.civ.addNotification(
                 "Because they have [${city.demandedResource}], the citizens of [${city.name}] are celebrating We Love The King Day!",
-                city.location, NotificationCategory.General, NotificationIcon.City, NotificationIcon.Happiness)
+                CityAction.withLocation(city), NotificationCategory.General, NotificationIcon.City, NotificationIcon.Happiness)
         }
     }
 
@@ -71,14 +73,14 @@ class CityTurnManager(val city: City) {
                     CityFlags.WeLoveTheKing.name -> {
                         city.civ.addNotification(
                             "We Love The King Day in [${city.name}] has ended.",
-                            city.location, NotificationCategory.General, NotificationIcon.City)
+                            CityAction.withLocation(city), NotificationCategory.General, NotificationIcon.City)
                         demandNewResource()
                     }
                     CityFlags.Resistance.name -> {
-                        city.updateCitizens = true
+                        city.shouldReassignPopulation = true
                         city.civ.addNotification(
                             "The resistance in [${city.name}] has ended!",
-                            city.location, NotificationCategory.General, "StatIcons/Resistance")
+                            CityAction.withLocation(city), NotificationCategory.General, "StatIcons/Resistance")
                     }
                 }
             }
@@ -91,22 +93,25 @@ class CityTurnManager(val city: City) {
             it.resourceType == ResourceType.Luxury && // Must be luxury
                     !it.hasUnique(UniqueType.CityStateOnlyResource) && // Not a city-state only resource eg jewelry
                     it.name != city.demandedResource && // Not same as last time
-                    !city.civ.hasResource(it.name) && // Not one we already have
                     it.name in city.tileMap.resources && // Must exist somewhere on the map
-                    city.getCenterTile().getTilesInDistance(3).none { nearTile -> nearTile.resource == it.name } // Not in this city's radius
+                    city.getCenterTile().getTilesInDistance(city.getWorkRange()).none { nearTile -> nearTile.resource == it.name } // Not in this city's radius
+        }
+        val missingResources = candidates.filter { !city.civ.hasResource(it.name) }
+        
+        if (missingResources.isEmpty()) { // hooray happpy day forever!
+            city.demandedResource = candidates.randomOrNull()?.name ?: ""
+            return // actually triggering "wtlk" is done in tryWeLoveTheKing(), *next turn*
         }
 
-        val chosenResource = candidates.randomOrNull()
-        /* What if we had a WLTKD before but now the player has every resource in the game? We can't
-           pick a new resource, so the resource will stay stay the same and the city will demand it
-           again even if the player still has it. But we shouldn't punish success. */
-        if (chosenResource != null)
-            city.demandedResource = chosenResource.name
+        val chosenResource = missingResources.randomOrNull()
+        
+        city.demandedResource = chosenResource?.name ?: "" // mods may have no resources as candidates even
         if (city.demandedResource == "") // Failed to get a valid resource, try again some time later
             city.setFlag(CityFlags.ResourceDemand, 15 + Random.Default.nextInt(10))
         else
             city.civ.addNotification("[${city.name}] demands [${city.demandedResource}]!",
-                city.location, NotificationCategory.General, NotificationIcon.City, "ResourceIcons/${city.demandedResource}")
+                listOf(LocationAction(city.location), OverviewAction(EmpireOverviewCategories.Resources)),
+                NotificationCategory.General, NotificationIcon.City, "ResourceIcons/${city.demandedResource}")
     }
 
 
@@ -122,6 +127,7 @@ class CityTurnManager(val city: City) {
             city.population.addPopulation(-1 * removedPopulation)
 
             if (city.population.population <= 0) {
+                city.espionage.removeAllPresentSpies(SpyFleeReason.CityCaptured)
                 city.civ.addNotification(
                     "[${city.name}] has been razed to the ground!",
                     city.location, NotificationCategory.General,
@@ -144,6 +150,5 @@ class CityTurnManager(val city: City) {
             city.population.unassignExtraPopulation()
         }
     }
-
 
 }

@@ -2,48 +2,47 @@ package com.unciv.ui.screens.cityscreen
 
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Actor
-import com.badlogic.gdx.scenes.scene2d.ui.Cell
+import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
-import com.unciv.UncivGame
-import com.unciv.logic.city.City
-import com.unciv.logic.city.CityFlags
-import com.unciv.logic.city.CityFocus
+import com.unciv.logic.city.*
+import com.unciv.models.Counter
 import com.unciv.models.ruleset.Building
+import com.unciv.models.ruleset.tile.TileResource
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.stats.Stat
 import com.unciv.models.translations.tr
-import com.unciv.ui.components.ExpanderTab
-import com.unciv.ui.components.Fonts
-import com.unciv.ui.components.extensions.addSeparator
-import com.unciv.ui.components.extensions.center
-import com.unciv.ui.components.extensions.colorFromRGB
-import com.unciv.ui.components.extensions.onActivation
-import com.unciv.ui.components.extensions.onClick
-import com.unciv.ui.components.extensions.surroundWithCircle
-import com.unciv.ui.components.extensions.toGroup
-import com.unciv.ui.components.extensions.toLabel
-import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.extensions.*
+import com.unciv.ui.components.fonts.Fonts
+import com.unciv.ui.components.input.KeyboardBinding
+import com.unciv.ui.components.input.onActivation
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.components.widgets.ExpanderTab
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.screens.basescreen.BaseScreen
-import com.unciv.ui.screens.civilopediascreen.CivilopediaScreen
 import kotlin.math.ceil
 import kotlin.math.round
-import com.unciv.ui.components.AutoScrollPane as ScrollPane
+import com.unciv.ui.components.widgets.AutoScrollPane as ScrollPane
 
-class CityStatsTable(private val cityScreen: CityScreen): Table() {
+class CityStatsTable(private val cityScreen: CityScreen) : Table() {
     private val innerTable = Table() // table within this Table. Slightly smaller creates border
     private val upperTable = Table() // fixed position table
     private val lowerTable = Table() // table that will be in the ScrollPane
     private val lowerPane: ScrollPane
-    private val cityInfo = cityScreen.city
-    private val lowerCell: Cell<ScrollPane>
-
+    private val city = cityScreen.city
+    private val headerIcon = ImageGetter.getImage("OtherIcons/BackArrow").apply {
+        setSize(18f, 18f)
+        setOrigin(Align.center)
+        rotation = 90f
+    }
+    private var headerIconClickArea = Table()
+    private var isOpen = true
+    
     private val detailedStatsButton = "Stats".toTextButton().apply {
         labelCell.pad(10f)
-        onActivation {
+        onActivation(binding = KeyboardBinding.ShowStats) {
             DetailedStatsPopup(cityScreen).open()
         }
     }
@@ -60,16 +59,22 @@ class CityStatsTable(private val cityScreen: CityScreen): Table() {
             "CityScreen/CityStatsTable/InnerTable",
             tintColor = Color.BLACK.cpy().apply { a = 0.8f }
         )
-        innerTable.add(upperTable).row()
 
         upperTable.defaults().pad(2f)
         lowerTable.defaults().pad(2f)
         lowerPane = ScrollPane(lowerTable)
         lowerPane.setOverscroll(false, false)
         lowerPane.setScrollingDisabled(true, false)
-        lowerCell = innerTable.add(lowerPane)
 
-        add(innerTable)
+        add(innerTable).growX()
+
+        // collapse icon with larger click area
+        headerIconClickArea.add(headerIcon).size(headerIcon.width).pad(6f+2f, 12f, 6f, 2f )
+        headerIconClickArea.touchable = Touchable.enabled
+        headerIconClickArea.onClick {
+            isOpen = !isOpen
+            cityScreen.updateWithoutConstructionAndMap()
+        }
     }
 
     fun update(height: Float) {
@@ -78,52 +83,59 @@ class CityStatsTable(private val cityScreen: CityScreen): Table() {
 
         val miniStatsTable = Table()
         val selected = BaseScreen.skin.getColor("selection")
-        for ((stat, amount) in cityInfo.cityStats.currentCityStats) {
-            if (stat == Stat.Faith && !cityInfo.civ.gameInfo.isReligionEnabled()) continue
+        for ((stat, amount) in city.cityStats.currentCityStats) {
+            if (stat == Stat.Faith && !city.civ.gameInfo.isReligionEnabled()) continue
             val icon = Table()
-            if (cityInfo.cityAIFocus.stat == stat) {
+            val focus = CityFocus.safeValueOf(stat)
+            val toggledFocus = if (focus == city.getCityFocus()) {
                 icon.add(ImageGetter.getStatIcon(stat.name).surroundWithCircle(27f, false, color = selected))
-                if (cityScreen.canCityBeChanged()) {
-                    icon.onClick {
-                        cityInfo.cityAIFocus = CityFocus.NoFocus
-                        cityInfo.reassignPopulation(); cityScreen.update()
-                    }
-                }
+                CityFocus.NoFocus
             } else {
                 icon.add(ImageGetter.getStatIcon(stat.name).surroundWithCircle(27f, false, color = Color.CLEAR))
-                if (cityScreen.canCityBeChanged()) {
-                    icon.onClick {
-                        cityInfo.cityAIFocus = cityInfo.cityAIFocus.safeValueOf(stat)
-                        cityInfo.reassignPopulation(); cityScreen.update()
-                    }
+                focus
+            }
+            if (cityScreen.canCityBeChanged()) {
+                icon.onActivation(binding = toggledFocus.binding) {
+                    city.setCityFocus(toggledFocus)
+                    city.reassignPopulation()
+                    cityScreen.update()
                 }
             }
             miniStatsTable.add(icon).size(27f).padRight(3f)
-            val valueToDisplay = if (stat == Stat.Happiness) cityInfo.cityStats.happinessList.values.sum() else amount
+            val valueToDisplay = if (stat == Stat.Happiness) city.cityStats.happinessList.values.sum() else amount
             miniStatsTable.add(round(valueToDisplay).toInt().toLabel()).padRight(5f)
         }
-        upperTable.add(miniStatsTable)
-
+        upperTable.add(miniStatsTable).expandX()
         upperTable.addSeparator()
-        upperTable.add(detailedStatsButton).row()
+        
+        lowerTable.add(detailedStatsButton).row()
         addText()
 
         // begin lowerTable
         addCitizenManagement()
-        addGreatPersonPointInfo(cityInfo)
-        if (!cityInfo.population.getMaxSpecialists().isEmpty()) {
+        addGreatPersonPointInfo(city)
+        if (!city.population.getMaxSpecialists().isEmpty()) {
             addSpecialistInfo()
         }
-        if (cityInfo.religion.getNumberOfFollowers().isNotEmpty() && cityInfo.civ.gameInfo.isReligionEnabled())
+        if (city.religion.getNumberOfFollowers().isNotEmpty() && city.civ.gameInfo.isReligionEnabled())
             addReligionInfo()
 
         addBuildingsInfo()
+
+        headerIcon.rotation = if(isOpen) 90f else 0f
+        
+        innerTable.clear()
+        innerTable.add(upperTable).expandX()
+        innerTable.add(headerIconClickArea).row()
+        val lowerCell = if (isOpen) {
+            innerTable.add(lowerPane).colspan(2)
+        } else null
 
         upperTable.pack()
         lowerTable.pack()
         lowerPane.layout()
         lowerPane.updateVisualScroll()
-        lowerCell.maxHeight(height - upperTable.height - 8f) // 2 on each side of each cell in innerTable
+        lowerCell?.maxHeight(height - upperTable.height - 8f) // 2 on each side of each cell in innerTable
 
         innerTable.pack()  // update innerTable
         pack()  // update self last
@@ -140,62 +152,76 @@ class CityStatsTable(private val cityScreen: CityScreen): Table() {
 
     private fun addText() {
         val unassignedPopString = "{Unassigned population}: ".tr() +
-                cityInfo.population.getFreePopulation().toString() + "/" + cityInfo.population.population
+                city.population.getFreePopulation().tr() + "/" + city.population.population.tr()
         val unassignedPopLabel = unassignedPopString.toLabel()
         if (cityScreen.canChangeState)
-            unassignedPopLabel.onClick { cityInfo.reassignPopulation(); cityScreen.update() }
+            unassignedPopLabel.onClick { city.reassignPopulation(); cityScreen.update() }
 
         var turnsToExpansionString =
-                if (cityInfo.cityStats.currentCityStats.culture > 0 && cityInfo.expansion.getChoosableTiles().any()) {
-                    val remainingCulture = cityInfo.expansion.getCultureToNextTile() - cityInfo.expansion.cultureStored
-                    var turnsToExpansion = ceil(remainingCulture / cityInfo.cityStats.currentCityStats.culture).toInt()
+                if (city.cityStats.currentCityStats.culture > 0 && city.expansion.getChoosableTiles().any()) {
+                    val remainingCulture = city.expansion.getCultureToNextTile() - city.expansion.cultureStored
+                    var turnsToExpansion = ceil(remainingCulture / city.cityStats.currentCityStats.culture).toInt()
                     if (turnsToExpansion < 1) turnsToExpansion = 1
                     "[$turnsToExpansion] turns to expansion".tr()
                 } else "Stopped expansion".tr()
-        if (cityInfo.expansion.getChoosableTiles().any())
+        if (city.expansion.getChoosableTiles().any())
             turnsToExpansionString +=
-                    " (${cityInfo.expansion.cultureStored}${Fonts.culture}/${cityInfo.expansion.getCultureToNextTile()}${Fonts.culture})"
+                    " (${city.expansion.cultureStored}${Fonts.culture}/${city.expansion.getCultureToNextTile()}${Fonts.culture})"
 
         var turnsToPopString =
                 when {
-                    cityInfo.isStarving() -> "[${cityInfo.population.getNumTurnsToStarvation()}] turns to lose population"
-                    cityInfo.getRuleset().units[cityInfo.cityConstructions.currentConstructionFromQueue]
+                    city.isStarving() -> "[${city.population.getNumTurnsToStarvation()}] turns to lose population"
+                    city.getRuleset().units[city.cityConstructions.currentConstructionFromQueue]
                         .let { it != null && it.hasUnique(UniqueType.ConvertFoodToProductionWhenConstructed) }
                     -> "Food converts to production"
-                    cityInfo.isGrowing() -> "[${cityInfo.population.getNumTurnsToNewPopulation()}] turns to new population"
+                    city.isGrowing() -> "[${city.population.getNumTurnsToNewPopulation()}] turns to new population"
                     else -> "Stopped population growth"
                 }.tr()
-        turnsToPopString += " (${cityInfo.population.foodStored}${Fonts.food}/${cityInfo.population.getFoodToNextPopulation()}${Fonts.food})"
+        turnsToPopString += " (${city.population.foodStored}${Fonts.food}/${city.population.getFoodToNextPopulation()}${Fonts.food})"
 
-        upperTable.add(unassignedPopLabel).row()
-        upperTable.add(turnsToExpansionString.toLabel()).row()
-        upperTable.add(turnsToPopString.toLabel()).row()
+        lowerTable.add(unassignedPopLabel).row()
+        lowerTable.add(turnsToExpansionString.toLabel()).row()
+        lowerTable.add(turnsToPopString.toLabel()).row()
 
         val tableWithIcons = Table()
         tableWithIcons.defaults().pad(2f)
-        if (cityInfo.isInResistance()) {
+        if (city.isInResistance()) {
             tableWithIcons.add(ImageGetter.getImage("StatIcons/Resistance")).size(20f)
-            tableWithIcons.add("In resistance for another [${cityInfo.getFlag(CityFlags.Resistance)}] turns".toLabel()).row()
+            tableWithIcons.add("In resistance for another [${city.getFlag(CityFlags.Resistance)}] turns".toLabel()).row()
         }
 
+        val resourceTable = Table()
+
+        val resourceCounter = Counter<TileResource>()
+        for (resourceSupply in CityResources.getCityResourcesAvailableToCity(city))
+            resourceCounter.add(resourceSupply.resource, resourceSupply.amount)
+        for ((resource, amount) in resourceCounter)
+            if (resource.hasUnique(UniqueType.CityResource)) {
+                resourceTable.add(amount.toLabel())
+                resourceTable.add(ImageGetter.getResourcePortrait(resource.name, 20f))
+                    .padRight(5f)
+                }
+        if (resourceTable.cells.notEmpty())
+            tableWithIcons.add(resourceTable)
+
         val (wltkIcon: Actor?, wltkLabel: Label?) = when {
-            cityInfo.isWeLoveTheKingDayActive() ->
+            city.isWeLoveTheKingDayActive() ->
                 ImageGetter.getStatIcon("Food") to
-                "We Love The King Day for another [${cityInfo.getFlag(CityFlags.WeLoveTheKing)}] turns".toLabel(Color.LIME)
-            cityInfo.demandedResource.isNotEmpty() ->
-                ImageGetter.getResourcePortrait(cityInfo.demandedResource, 20f) to
-                "Demanding [${cityInfo.demandedResource}]".toLabel(Color.CORAL, hideIcons = true)
+                "We Love The King Day for another [${city.getFlag(CityFlags.WeLoveTheKing)}] turns".toLabel(Color.LIME)
+            city.demandedResource.isNotEmpty() ->
+                ImageGetter.getResourcePortrait(city.demandedResource, 20f) to
+                "Demanding [${city.demandedResource}]".toLabel(Color.CORAL, hideIcons = true)
             else -> null to null
         }
         if (wltkLabel != null) {
             tableWithIcons.add(wltkIcon!!).size(20f).padRight(5f)
             wltkLabel.onClick {
-                UncivGame.Current.pushScreen(CivilopediaScreen(cityInfo.getRuleset(), link = "We Love The King Day"))
+                cityScreen.openCivilopedia("Tutorial/We Love The King Day")
             }
             tableWithIcons.add(wltkLabel).row()
         }
 
-        upperTable.add(tableWithIcons).row()
+        lowerTable.add(tableWithIcons).row()
     }
 
     private fun addCitizenManagement() {
@@ -209,7 +235,7 @@ class CityStatsTable(private val cityScreen: CityScreen): Table() {
     }
 
     private fun addReligionInfo() {
-        val expanderTab = CityReligionInfoTable(cityInfo.religion).asExpander { onContentResize() }
+        val expanderTab = CityReligionInfoTable(city.religion).asExpander { onContentResize() }
         lowerTable.add(expanderTab).growX().row()
     }
 
@@ -218,7 +244,7 @@ class CityStatsTable(private val cityScreen: CityScreen): Table() {
         val specialistBuildings = mutableListOf<Building>()
         val otherBuildings = mutableListOf<Building>()
 
-        for (building in cityInfo.cityConstructions.getBuiltBuildings()) {
+        for (building in city.cityConstructions.getBuiltBuildings()) {
             when {
                 building.isAnyWonder() -> wonders.add(building)
                 !building.newSpecialists().isEmpty() -> specialistBuildings.add(building)
@@ -232,7 +258,7 @@ class CityStatsTable(private val cityScreen: CityScreen): Table() {
         otherBuildings.sortBy { it.name }
 
         val totalTable = Table()
-        lowerTable.addCategory("Buildings", totalTable, false)
+        lowerTable.addCategory("Buildings", totalTable, KeyboardBinding.BuildingsDetail, false)
 
         if (specialistBuildings.isNotEmpty()) {
             val specialistBuildingsTable = Table()
@@ -271,21 +297,21 @@ class CityStatsTable(private val cityScreen: CityScreen): Table() {
         val statsAndSpecialists = Table()
 
         val icon = ImageGetter.getConstructionPortrait(building.name, 50f)
-        val isFree = building.name in cityScreen.city.civ.civConstructions.getFreeBuildings(cityScreen.city.id)
+        val isFree = cityScreen.hasFreeBuilding(building)
         val displayName = if (isFree) "{${building.name}} ({Free})" else building.name
 
         info.add(displayName.toLabel(fontSize = Constants.defaultFontSize, hideIcons = true)).padBottom(5f).right().row()
 
-        val stats = building.getStats(cityInfo).joinToString(separator = " ") {
+        val stats = building.getStats(city).joinToString(separator = " ") {
             "" + it.value.toInt() + it.key.character
         }
         statsAndSpecialists.add(stats.toLabel(fontSize = Constants.defaultFontSize)).right()
 
-        val assignedSpec = cityInfo.population.getNewSpecialists().clone()
+        val assignedSpec = city.population.getNewSpecialists().clone()
 
         val specialistIcons = Table()
         for ((specialistName, amount) in building.newSpecialists()) {
-            val specialist = cityInfo.getRuleset().specialists[specialistName]
+            val specialist = city.getRuleset().specialists[specialistName]
                 ?: continue // probably a mod that doesn't have the specialist defined yet
             repeat(amount) {
                 if (assignedSpec[specialistName] > 0) {
@@ -312,13 +338,18 @@ class CityStatsTable(private val cityScreen: CityScreen): Table() {
         destinationTable.add(button).pad(1f).padBottom(2f).padTop(2f).expandX().right().row()
     }
 
-    private fun Table.addCategory(category: String, showHideTable: Table, startsOpened: Boolean = true, innerPadding: Float = 10f) : ExpanderTab {
+    private fun Table.addCategory(
+        category: String,
+        showHideTable: Table,
+        toggleKey: KeyboardBinding,
+        startsOpened: Boolean = true
+    ) : ExpanderTab {
         val expanderTab = ExpanderTab(
             title = category,
             fontSize = Constants.defaultFontSize,
             persistenceID = "CityInfo.$category",
             startsOutOpened = startsOpened,
-            defaultPad = innerPadding,
+            toggleKey = toggleKey,
             onChange = { onContentResize() }
         ) {
             it.add(showHideTable).fillX().right()
@@ -331,30 +362,24 @@ class CityStatsTable(private val cityScreen: CityScreen): Table() {
 
         val greatPeopleTable = Table()
 
-        val greatPersonPoints = city.getGreatPersonPointsForNextTurn()
-        val allGreatPersonNames = greatPersonPoints.asSequence().flatMap { it.value.keys }.distinct()
-
-        if (allGreatPersonNames.none())
+        val gppBreakdown = GreatPersonPointsBreakdown(city)
+        if (gppBreakdown.allNames.isEmpty())
             return
+        val greatPersonPoints = gppBreakdown.sum()
 
-        for (greatPersonName in allGreatPersonNames) {
-
-            var gppPerTurn = 0
-
-            for ((_, gppCounter) in greatPersonPoints) {
-                val gppPointsFromSource = gppCounter[greatPersonName]
-                if (gppPointsFromSource == 0) continue
-                gppPerTurn += gppPointsFromSource
-            }
+        // Iterating over allNames instead of greatPersonPoints will include those where the aggregation had points but ended up zero
+        for (greatPersonName in gppBreakdown.allNames) {
+            val gppPerTurn = greatPersonPoints[greatPersonName]
 
             val info = Table()
 
-            info.add(ImageGetter.getUnitIcon(greatPersonName, Color.GOLD).toGroup(20f))
+            val greatPerson = city.getRuleset().units[greatPersonName] ?: continue
+            info.add(ImageGetter.getUnitIcon(greatPerson, Color.GOLD).toGroup(20f))
                 .left().padBottom(4f).padRight(5f)
             info.add("{$greatPersonName} (+$gppPerTurn)".toLabel(hideIcons = true)).left().padBottom(4f).expandX().row()
 
             val gppCurrent = city.civ.greatPeople.greatPersonPointsCounter[greatPersonName]
-            val gppNeeded = city.civ.greatPeople.getPointsRequiredForGreatPerson()
+            val gppNeeded = city.civ.greatPeople.getPointsRequiredForGreatPerson(greatPersonName)
 
             val percent = gppCurrent / gppNeeded.toFloat()
 
@@ -372,12 +397,18 @@ class CityStatsTable(private val cityScreen: CityScreen): Table() {
             progressBar.setLabel(Color.WHITE, "$gppCurrent/$gppNeeded", fontSize = 14)
 
             info.add(progressBar).colspan(2).left().expandX().row()
-
+            info.onClick {
+                GreatPersonPointsBreakdownPopup(cityScreen, gppBreakdown, greatPersonName)
+            }
             greatPeopleTable.add(info).growX().top().padBottom(10f)
-            greatPeopleTable.add(ImageGetter.getConstructionPortrait(greatPersonName, 50f)).row()
+            val icon = ImageGetter.getConstructionPortrait(greatPersonName, 50f)
+            icon.onClick {
+                GreatPersonPointsBreakdownPopup(cityScreen, gppBreakdown, null)
+            }
+            greatPeopleTable.add(icon).row()
         }
 
-        lowerTable.addCategory("Great People", greatPeopleTable)
+        lowerTable.addCategory("Great People", greatPeopleTable, KeyboardBinding.GreatPeopleDetail)
     }
 
 }

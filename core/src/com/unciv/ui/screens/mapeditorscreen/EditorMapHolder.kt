@@ -15,8 +15,8 @@ import com.unciv.ui.components.tilegroups.TileGroupMap
 import com.unciv.ui.components.tilegroups.TileGroup
 import com.unciv.ui.components.tilegroups.TileSetStrings
 import com.unciv.ui.screens.basescreen.BaseScreen
-import com.unciv.ui.components.ZoomableScrollPane
-import com.unciv.ui.components.extensions.onClick
+import com.unciv.ui.components.widgets.ZoomableScrollPane
+import com.unciv.ui.components.input.onClick
 import com.unciv.ui.screens.basescreen.UncivStage
 
 
@@ -69,7 +69,9 @@ class EditorMapHolder(
 
     private fun addTiles(stage: Stage) {
 
-        val tileSetStrings = TileSetStrings()
+        val tileSetStrings =
+            if (editorScreen != null) TileSetStrings(editorScreen.ruleset, editorScreen.game.settings)
+            else TileSetStrings()
         val daTileGroups = tileMap.values.map { TileGroup(it, tileSetStrings) }
 
         tileGroupMap = TileGroupMap(this, daTileGroups, continuousScrollingX)

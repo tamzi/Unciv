@@ -7,19 +7,19 @@ import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
-import com.unciv.ui.screens.mapeditorscreen.MapEditorScreen
-import com.unciv.ui.screens.mapeditorscreen.TileInfoNormalizer
-import com.unciv.ui.screens.newgamescreen.ModCheckboxTable
-import com.unciv.ui.screens.newgamescreen.TranslatedSelectBox
-import com.unciv.ui.popups.Popup
-import com.unciv.ui.screens.basescreen.BaseScreen
-import com.unciv.ui.components.TabbedPager
+import com.unciv.ui.components.widgets.TabbedPager
+import com.unciv.ui.components.widgets.TranslatedSelectBox
 import com.unciv.ui.components.UncivTooltip.Companion.addTooltip
 import com.unciv.ui.components.extensions.isEnabled
-import com.unciv.ui.components.extensions.onChange
-import com.unciv.ui.components.extensions.onClick
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.input.onChange
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.popups.Popup
+import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.screens.mapeditorscreen.MapEditorScreen
+import com.unciv.logic.map.tile.TileNormalizer
+import com.unciv.ui.screens.newgamescreen.ModCheckboxTable
 
 class MapEditorModsTab(
     private val editorScreen: MapEditorScreen
@@ -38,7 +38,7 @@ class MapEditorModsTab(
         modsTable = ModCheckboxTable(linkedSetOf(), rulesetName, editorScreen, false) {}
 
         val baseRulesets = RulesetCache.getSortedBaseRulesets()
-        baseRulesetSelectBox = TranslatedSelectBox(baseRulesets, rulesetName, BaseScreen.skin)
+        baseRulesetSelectBox = TranslatedSelectBox(baseRulesets, rulesetName)
         baseRulesetSelectBox.onChange {
             val newBaseRuleset = baseRulesetSelectBox.selected.value
             editorScreen.newMapParameters.baseRuleset = newBaseRuleset
@@ -147,6 +147,6 @@ class MapEditorModsTab(
 
     private fun fitMapToRuleset(newRuleset: Ruleset) {
         for (tile in editorScreen.tileMap.values)
-            TileInfoNormalizer.normalizeToRuleset(tile, newRuleset)
+            TileNormalizer.normalizeToRuleset(tile, newRuleset)
     }
 }

@@ -1,9 +1,9 @@
 package com.unciv.ui.screens.pickerscreens
 
 import com.unciv.ui.screens.basescreen.BaseScreen
-import com.unciv.ui.components.KeyCharAndCode
-import com.unciv.ui.components.extensions.keyShortcuts
-import com.unciv.ui.components.extensions.onActivation
+import com.unciv.ui.components.input.KeyCharAndCode
+import com.unciv.ui.components.input.keyShortcuts
+import com.unciv.ui.components.input.onActivation
 
 open class PickerScreen(disableScroll: Boolean = false) : BaseScreen() {
 
@@ -13,6 +13,8 @@ open class PickerScreen(disableScroll: Boolean = false) : BaseScreen() {
     val closeButton by pickerPane::closeButton
     /** @see PickerPane.descriptionLabel */
     val descriptionLabel by pickerPane::descriptionLabel
+    /** @see PickerPane.descriptionScroll */
+    protected val descriptionScroll by pickerPane::descriptionScroll
     /** @see PickerPane.rightSideGroup */
     val rightSideGroup by pickerPane::rightSideGroup
     /** @see PickerPane.rightSideButton */
@@ -20,6 +22,8 @@ open class PickerScreen(disableScroll: Boolean = false) : BaseScreen() {
 
     /** @see PickerPane.topTable */
     val topTable by pickerPane::topTable
+    /** @see PickerPane.bottomTable */
+    val bottomTable by pickerPane::bottomTable
     /** @see PickerPane.scrollPane */
     val scrollPane by pickerPane::scrollPane
     /** @see PickerPane.splitPane */

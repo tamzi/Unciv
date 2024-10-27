@@ -4,13 +4,6 @@ import com.unciv.logic.IsPartOfGameInfoSerialization
 import com.unciv.logic.civilization.PlayerType
 import com.unciv.models.ruleset.Speed
 
-
-@Suppress("EnumEntryName")  // These merit unusual names
-enum class BaseRuleset(val fullName:String){
-    Civ_V_Vanilla("Civ V - Vanilla"),
-    Civ_V_GnK("Civ V - Gods & Kings"),
-}
-
 class GameParameters : IsPartOfGameInfoSerialization { // Default values are the default new game
     var difficulty = "Prince"
     var speed = Speed.DEFAULT
@@ -42,13 +35,19 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
     var victoryTypes: ArrayList<String> = arrayListOf()
     var startingEra = "Ancient era"
 
+    // Multiplayer parameters
     var isOnlineMultiplayer = false
     var multiplayerServerUrl: String? = null
     var anyoneCanSpectate = true
+    /** After this amount of minutes, anyone can choose to 'skip turn' of the current player to keep the game going */
+    var minutesUntilSkipTurn = 60 * 24
+
     var baseRuleset: String = BaseRuleset.Civ_V_GnK.fullName
     var mods = LinkedHashSet<String>()
 
     var maxTurns = 500
+
+    var acceptedModCheckErrors = ""
 
     fun clone(): GameParameters {
         val parameters = GameParameters()
@@ -80,6 +79,7 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
         parameters.baseRuleset = baseRuleset
         parameters.mods = LinkedHashSet(mods)
         parameters.maxTurns = maxTurns
+        parameters.acceptedModCheckErrors = acceptedModCheckErrors
         return parameters
     }
 
@@ -102,7 +102,14 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
             yield(if (mods.isEmpty()) "no mods" else mods.joinToString(",", "mods=(", ")", 6) )
         }.joinToString(prefix = "(", postfix = ")")
 
-    fun getModsAndBaseRuleset(): HashSet<String> {
-        return mods.toHashSet().apply { add(baseRuleset) }
-    }
+    /** Get all mods including base
+     *
+     *  The returned Set is ordered base first, then in the order they are stored in a save.
+     *  This creates a fresh instance, and the caller is allowed to mutate it.
+     */
+    fun getModsAndBaseRuleset() =
+        LinkedHashSet<String>(mods.size + 1).apply {
+            add(baseRuleset)
+            addAll(mods)
+        }
 }

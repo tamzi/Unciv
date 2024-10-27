@@ -1,107 +1,31 @@
 package com.unciv.logic.civilization.managers
 
-import com.unciv.Constants
 import com.unciv.logic.IsPartOfGameInfoSerialization
 import com.unciv.logic.city.City
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.map.tile.Tile
+import com.unciv.models.Spy
+import com.unciv.models.ruleset.unique.UniqueType
 
-enum class SpyAction(val stringName: String) {
-    None("None"),
-    Moving("Moving"),
-    EstablishNetwork("Establishing Network"),
-    StealingTech("Stealing Tech"),
-    RiggingElections("Rigging Elections"),
-    CounterIntelligence("Conducting Counter-intelligence")
-}
-
-
-class Spy() : IsPartOfGameInfoSerialization {
-    // `location == null` means that the spy is in its hideout
-    var location: String? = null
-    lateinit var name: String
-    var timeTillActionFinish = 0
-    var action = SpyAction.None
-
-    @Transient
-    lateinit var civInfo: Civilization
-
-    constructor(name: String) : this() {
-        this.name = name
-    }
-
-    fun clone(): Spy {
-        val toReturn = Spy(name)
-        toReturn.location = location
-        toReturn.timeTillActionFinish = timeTillActionFinish
-        toReturn.action = action
-        return toReturn
-    }
-
-    fun setTransients(civInfo: Civilization) {
-        this.civInfo = civInfo
-    }
-
-    fun endTurn() {
-        --timeTillActionFinish
-        if (timeTillActionFinish != 0) return
-
-        when (action) {
-            SpyAction.Moving -> {
-                action = SpyAction.EstablishNetwork
-                timeTillActionFinish = 3 // Dependent on cultural familiarity level if that is ever implemented
-            }
-            SpyAction.EstablishNetwork -> {
-                val location = getLocation()!! // This should be impossible to reach as going to the hideout sets your action to None.
-                action =
-                    if (location.civ.isCityState()) {
-                        SpyAction.RiggingElections
-                    } else if (location.civ == civInfo) {
-                        SpyAction.CounterIntelligence
-                    } else {
-                        SpyAction.StealingTech
-                    }
-            }
-            else -> {
-                ++timeTillActionFinish // Not implemented yet, so don't do anything
-            }
-        }
-    }
-
-    fun moveTo(city: City?) {
-        location = city?.id
-        if (city == null) { // Moving to spy hideout
-            action = SpyAction.None
-            timeTillActionFinish = 0
-            return
-        }
-        action = SpyAction.Moving
-        timeTillActionFinish = 1
-    }
-
-    fun isSetUp() = action !in listOf(SpyAction.Moving, SpyAction.None, SpyAction.EstablishNetwork)
-
-    fun getLocation(): City? {
-        return civInfo.gameInfo.getCities().firstOrNull { it.id == location }
-    }
-
-    fun getLocationName(): String {
-        return getLocation()?.name ?: Constants.spyHideout
-    }
-}
 
 class EspionageManager : IsPartOfGameInfoSerialization {
 
-    var spyCount = 0
-    var spyList = mutableListOf<Spy>()
-    var erasSpyEarnedFor = mutableListOf<String>()
+    var spyList = ArrayList<Spy>()
+    val erasSpyEarnedFor = LinkedHashSet<String>()
 
     @Transient
     lateinit var civInfo: Civilization
 
+    /**
+     * Part of the nextTurnAction of MoveSpies.
+     * We need to store if the player has clicked the button already
+     */
+    @Transient
+    var dismissedShouldMoveSpies = false
+
     fun clone(): EspionageManager {
         val toReturn = EspionageManager()
-        toReturn.spyCount = spyCount
-        toReturn.spyList.addAll(spyList.map { it.clone() })
+        spyList.mapTo(toReturn.spyList) { it.clone() }
         toReturn.erasSpyEarnedFor.addAll(erasSpyEarnedFor)
         return toReturn
     }
@@ -114,23 +38,75 @@ class EspionageManager : IsPartOfGameInfoSerialization {
     }
 
     fun endTurn() {
-        for (spy in spyList)
+        for (spy in spyList.toList())
             spy.endTurn()
     }
 
-    private fun getSpyName(): String {
+    fun getSpyName(): String {
         val usedSpyNames = spyList.map { it.name }.toHashSet()
         val validSpyNames = civInfo.nation.spyNames.filter { it !in usedSpyNames }
-        if (validSpyNames.isEmpty()) { return "Spy ${spyList.size+1}" } // +1 as non-programmers count from 1
-        return validSpyNames.random()
+        return validSpyNames.randomOrNull()
+            ?: "Spy ${spyList.size + 1}" // +1 as non-programmers count from 1
     }
 
-    fun addSpy(): String {
+    fun addSpy(): Spy {
         val spyName = getSpyName()
-        val newSpy = Spy(spyName)
+        val newSpy = Spy(spyName, getStartingSpyRank())
         newSpy.setTransients(civInfo)
         spyList.add(newSpy)
-        ++spyCount
-        return spyName
+        return newSpy
+    }
+
+    fun getTilesVisibleViaSpies(): Sequence<Tile> {
+        return spyList.asSequence()
+            .filter { it.isSetUp() }
+            .mapNotNull { it.getCityOrNull() }
+            .flatMap { it.getCenterTile().getTilesInDistance(1) }
+    }
+
+    fun getTechsToSteal(otherCiv: Civilization): Set<String> {
+        val techsToSteal = mutableSetOf<String>()
+        for (tech in otherCiv.tech.techsResearched) {
+            if (civInfo.tech.isResearched(tech)) continue
+            if (!civInfo.tech.canBeResearched(tech)) continue
+            techsToSteal.add(tech)
+        }
+        return techsToSteal
+    }
+
+    fun getSpiesInCity(city: City): List<Spy> {
+        return spyList.filterTo(mutableListOf()) { it.getCityOrNull() == city }
+    }
+
+    fun getStartingSpyRank(): Int = 1 + civInfo.getMatchingUniques(UniqueType.SpyStartingLevel).sumOf { it.params[0].toInt() }
+
+    /**
+     * Returns a list of all cities with our spies in them.
+     * The list needs to be stable across calls on the same turn.
+     */
+    fun getCitiesWithOurSpies(): List<City> = spyList.filter { it.isSetUp() }.mapNotNull { it.getCityOrNull() }
+
+    fun getSpyAssignedToCity(city: City): Spy? = spyList.firstOrNull { it.getCityOrNull() == city }
+
+    /**
+     * Determines whether the NextTurnAction MoveSpies should be shown or not
+     * @return true if there are spies waiting to be moved
+     */
+    fun shouldShowMoveSpies(): Boolean = !dismissedShouldMoveSpies && hasIdleSpies()
+
+    /** Are any spies in the hideout?
+     *  @see shouldShowMoveSpies */
+    fun hasIdleSpies() = spyList.any { it.isIdle() }
+
+    fun getIdleSpies(): List<Spy> {
+        return spyList.filterTo(mutableListOf()) { it.isIdle() }
+    }
+
+    /**
+     * Takes all spies away from their cities.
+     * Called when the civ is destroyed.
+     */
+    fun removeAllSpies() {
+        spyList.forEach { it.moveTo(null) }
     }
 }

@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.scenes.scene2d.ui.ButtonGroup
 import com.badlogic.gdx.scenes.scene2d.ui.CheckBox
 import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.unciv.Constants
 import com.unciv.logic.map.MapGeneratedMainType
 import com.unciv.logic.map.MapParameters
 import com.unciv.logic.map.MapType
@@ -12,23 +13,23 @@ import com.unciv.logic.map.mapgenerator.MapGenerator
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
 import com.unciv.models.translations.tr
-import com.unciv.ui.images.ImageGetter
-import com.unciv.ui.screens.mapeditorscreen.MapEditorScreen
-import com.unciv.ui.screens.mapeditorscreen.MapGeneratorSteps
-import com.unciv.ui.screens.newgamescreen.MapParametersTable
-import com.unciv.ui.popups.Popup
-import com.unciv.ui.popups.ToastPopup
-import com.unciv.ui.screens.basescreen.BaseScreen
-import com.unciv.ui.components.KeyCharAndCode
-import com.unciv.ui.components.TabbedPager
+import com.unciv.ui.components.widgets.TabbedPager
 import com.unciv.ui.components.extensions.disable
 import com.unciv.ui.components.extensions.enable
 import com.unciv.ui.components.extensions.isEnabled
-import com.unciv.ui.components.extensions.onChange
-import com.unciv.ui.components.extensions.onClick
 import com.unciv.ui.components.extensions.toCheckBox
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.input.KeyCharAndCode
+import com.unciv.ui.components.input.onChange
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.images.ImageGetter
+import com.unciv.ui.popups.Popup
+import com.unciv.ui.popups.ToastPopup
+import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.screens.mapeditorscreen.MapEditorScreen
+import com.unciv.ui.screens.mapeditorscreen.MapGeneratorSteps
+import com.unciv.ui.screens.newgamescreen.MapParametersTable
 import com.unciv.utils.Concurrency
 import com.unciv.utils.Log
 
@@ -37,11 +38,6 @@ class MapEditorGenerateTab(
 ): TabbedPager(capacity = 2) {
     private val newTab = MapEditorNewMapTab(this)
     private val partialTab = MapEditorGenerateStepsTab(this)
-
-    // Since we allow generation components to be run repeatedly, it might surprise the user that
-    // the outcome stays the same when repeated - due to them operating on the same seed.
-    // So we change the seed behind the scenes if already used for a certain step...
-    private val seedUsedForStep = mutableSetOf<MapGeneratorSteps>()
 
     init {
         name = "Generate"
@@ -59,26 +55,26 @@ class MapEditorGenerateTab(
 
     private fun setButtonsEnabled(enable: Boolean) {
         newTab.generateButton.isEnabled = enable
-        newTab.generateButton.setText( (if(enable) "Create" else "Working...").tr())
+        newTab.generateButton.setText( (if(enable) "Create" else Constants.working).tr())
         partialTab.generateButton.isEnabled = enable
-        partialTab.generateButton.setText( (if(enable) "Generate" else "Working...").tr())
+        partialTab.generateButton.setText( (if(enable) "Generate" else Constants.working).tr())
     }
 
     private fun generate(step: MapGeneratorSteps) {
-        if (step <= MapGeneratorSteps.Landmass && step in seedUsedForStep) {
-            // reseed visibly when starting from scratch (new seed shows in advanced settings widget)
+        if (newTab.mapParametersTable.randomizeSeed) {
+            // reseed visibly if the "Randomize seed" checkbox is checked
             newTab.mapParametersTable.reseed()
-            seedUsedForStep -= step
         }
+
         val mapParameters = editorScreen.newMapParameters.clone()  // this clone is very important here
         val message = mapParameters.mapSize.fixUndesiredSizes(mapParameters.worldWrap)
         if (message != null) {
             Concurrency.runOnGLThread {
                 ToastPopup( message, editorScreen, 4000 )
                 newTab.mapParametersTable.run { mapParameters.mapSize.also {
-                    customMapSizeRadius.text = it.radius.toString()
-                    customMapWidth.text = it.width.toString()
-                    customMapHeight.text = it.height.toString()
+                    customMapSizeRadius.text = it.radius.tr()
+                    customMapWidth.text = it.width.tr()
+                    customMapHeight.text = it.height.tr()
                 } }
             }
             return
@@ -89,11 +85,6 @@ class MapEditorGenerateTab(
             return
         }
 
-        if (step in seedUsedForStep) {
-            mapParameters.reseed()
-        } else {
-            seedUsedForStep += step
-        }
 
         Gdx.input.inputProcessor = null // remove input processing - nothing will be clicked!
         setButtonsEnabled(false)

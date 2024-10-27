@@ -5,21 +5,24 @@ import com.badlogic.gdx.utils.JsonValue
 import com.unciv.logic.IsPartOfGameInfoSerialization
 import com.unciv.logic.map.tile.TileHistory.TileHistoryState.CityCenterType
 import java.util.TreeMap
+import org.jetbrains.annotations.VisibleForTesting
 
 /**
  * Records events throughout the game related to a tile.
  *
  * Used for end of game replay.
  *
+ * @property history History records by turn.
  * @see com.unciv.ui.screens.victoryscreen.ReplayMap
  */
-open class TileHistory : IsPartOfGameInfoSerialization {
-
+class TileHistory(
+    private val history: TreeMap<Int, TileHistoryState> = TreeMap()
+) : IsPartOfGameInfoSerialization, Json.Serializable, Iterable<MutableMap.MutableEntry<Int, TileHistory.TileHistoryState>> {
     class TileHistoryState(
         /** The name of the civilization owning this tile or `null` if there is no owner. */
-        var owningCivName: String? = null,
+        val owningCivName: String? = null,
         /** `null` if this tile does not have a city center. Otherwise this field denotes of which type this city center is. */
-        var cityCenterType: CityCenterType = CityCenterType.None
+        val cityCenterType: CityCenterType = CityCenterType.None
     ) : IsPartOfGameInfoSerialization {
         enum class CityCenterType(val serializedRepresentation: String) {
             None("N"),
@@ -28,7 +31,7 @@ open class TileHistory : IsPartOfGameInfoSerialization {
 
             companion object {
                 fun deserialize(s: String): CityCenterType =
-                        values().firstOrNull { it.serializedRepresentation == s } ?: None
+                        entries.firstOrNull { it.serializedRepresentation == s } ?: None
             }
         }
 
@@ -41,9 +44,6 @@ open class TileHistory : IsPartOfGameInfoSerialization {
             }
         )
     }
-
-    /** History records by turn. */
-    private var history: TreeMap<Int, TileHistoryState> = TreeMap()
 
     fun recordTakeOwnership(tile: Tile) {
         history[tile.tileMap.gameInfo.turns] =
@@ -59,35 +59,45 @@ open class TileHistory : IsPartOfGameInfoSerialization {
         return history.floorEntry(turn)?.value ?: TileHistoryState()
     }
 
-    fun clone(): TileHistory {
-        val toReturn = TileHistory()
-        toReturn.history = TreeMap(history)
-        return toReturn
+    fun clone(): TileHistory = TileHistory(TreeMap(history))
+
+    /** Implement Json.Serializable
+     *  - Output looked like this: `history:{0:[Spain,C],12:[China,R]}`
+     *    (but now we have turned off simplifed json, so it's properly quoted)
+     */
+    override fun write(json: Json) {
+        for ((key, entry) in history) {
+            json.writeArrayStart(key.toString())
+            json.writeValue(entry.owningCivName)
+            json.writeValue(entry.cityCenterType.serializedRepresentation)
+            json.writeArrayEnd()
+        }
     }
 
-    /** Custom Json formatter for a [TileHistory].
-     *  Output looks like this: `history:{0:[Spain,C],12:[China,R]}`
-     */
-    class Serializer : Json.Serializer<TileHistory> {
-        override fun write(json: Json, `object`: TileHistory, knownType: Class<*>?) {
-            json.writeObjectStart()
-            for ((key, entry) in `object`.history) {
-                json.writeArrayStart(key.toString())
-                json.writeValue(entry.owningCivName)
-                json.writeValue(entry.cityCenterType.serializedRepresentation)
-                json.writeArrayEnd()
-            }
-            json.writeObjectEnd()
+    override fun read(json: Json, jsonData: JsonValue) {
+        for (entry in jsonData) {
+            val turn = entry.name.toInt()
+            val owningCivName =
+                (if (entry[0].isString) entry.getString(0) else "").takeUnless { it.isEmpty() }
+            val cityCenterType = CityCenterType.deserialize(entry.getString(1))
+            history[turn] = TileHistoryState(owningCivName, cityCenterType)
         }
+    }
 
-        override fun read(json: Json, jsonData: JsonValue, type: Class<*>?) = TileHistory().apply {
-            for (entry in jsonData) {
-                val turn = entry.name.toInt()
-                val owningCivName =
-                        (if (entry[0].isString) entry.getString(0) else "").takeUnless { it.isEmpty() }
-                val cityCenterType = CityCenterType.deserialize(entry.getString(1))
-                history[turn] = TileHistoryState(owningCivName, cityCenterType)
-            }
+    @VisibleForTesting
+    fun addTestEntry(turn: Int, entry: TileHistoryState) {
+        history[turn] = entry
+    }
+
+    @VisibleForTesting
+    override fun iterator() = history.iterator()
+
+    // For json serialization, to not serialize an empty object
+    override fun equals(other: Any?): Boolean {
+        if (other !is TileHistory) return false
+        if (history == other.history) return true
+        return history.size == other.history.size && history.entries.all { (turn, state) ->
+            state == other.history[turn]
         }
     }
 }

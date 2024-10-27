@@ -4,28 +4,28 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.scenes.scene2d.ui.Table
-import com.unciv.UncivGame
-import com.unciv.models.ruleset.IConstruction
-import com.unciv.models.ruleset.PerpetualConstruction
-import com.unciv.models.ruleset.PerpetualStatConversion
 import com.unciv.models.UncivSound
 import com.unciv.models.ruleset.Building
+import com.unciv.models.ruleset.IConstruction
 import com.unciv.models.ruleset.IRulesetObject
+import com.unciv.models.ruleset.PerpetualConstruction
+import com.unciv.models.ruleset.PerpetualStatConversion
 import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.models.translations.tr
-import com.unciv.ui.components.Fonts
 import com.unciv.ui.components.extensions.darken
 import com.unciv.ui.components.extensions.disable
-import com.unciv.ui.components.extensions.onClick
+import com.unciv.ui.components.extensions.isEnabled
 import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.fonts.Fonts
+import com.unciv.ui.components.input.onClick
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.popups.closeAllPopups
 import com.unciv.ui.screens.basescreen.BaseScreen
-import com.unciv.ui.screens.civilopediascreen.CivilopediaScreen
 
-class ConstructionInfoTable(val cityScreen: CityScreen): Table() {
+class ConstructionInfoTable(val cityScreen: CityScreen) : Table() {
     private val selectedConstructionTable = Table()
+    private val buyButtonFactory = BuyButtonFactory(cityScreen)
 
     init {
         selectedConstructionTable.background = BaseScreen.skinStrings.getUiBackground(
@@ -66,7 +66,7 @@ class ConstructionInfoTable(val cityScreen: CityScreen): Table() {
                 if (link.isEmpty()) return@apply
                 touchable = Touchable.enabled
                 this.onClick {
-                    UncivGame.Current.pushScreen(CivilopediaScreen(city.getRuleset(), link = link))
+                    cityScreen.openCivilopedia(link)
                 }
             }).pad(5f)
 
@@ -74,7 +74,7 @@ class ConstructionInfoTable(val cityScreen: CityScreen): Table() {
             val specialConstruction = PerpetualConstruction.perpetualConstructionsMap[construction.name]
 
             buildingText += specialConstruction?.getProductionTooltip(city)
-                    ?: cityConstructions.getTurnsToConstructionString(construction.name)
+                    ?: cityConstructions.getTurnsToConstructionString(construction)
 
             add(Label(buildingText, BaseScreen.skin)).row()  // already translated
 
@@ -90,32 +90,40 @@ class ConstructionInfoTable(val cityScreen: CityScreen): Table() {
             descriptionLabel.wrap = true
             add(descriptionLabel).colspan(2).width(stage.width / 4)
 
-            // Show sell button if construction is a currently sellable building
-            if (construction is Building && cityConstructions.isBuilt(construction.name)
-                    && construction.isSellable()) {
+            if (cityConstructions.isBuilt(construction.name)) {
+                showSellButton(construction)
+            } else if (buyButtonFactory.hasBuyButtons(construction)) {
+                row()
+                buyButtonFactory.addBuyButtons(selectedConstructionTable, construction) {
+                    it.padTop(5f).colspan(2).center()
+                }
+            }
+        }
+    }
+
+    // Show sell button if construction is a currently sellable building
+    private fun showSellButton(
+        construction: IConstruction
+    ) {
+        if (construction is Building && construction.isSellable()) {
+            selectedConstructionTable.run {
                 val sellAmount = cityScreen.city.getGoldForSellingBuilding(construction.name)
                 val sellText = "{Sell} $sellAmount " + Fonts.gold
                 val sellBuildingButton = sellText.toTextButton()
                 row()
                 add(sellBuildingButton).padTop(5f).colspan(2).center()
 
-                sellBuildingButton.onClick(UncivSound.Coin) {
-                    sellBuildingButton.disable()
-                    cityScreen.closeAllPopups()
-
-                    ConfirmPopup(
-                        cityScreen,
-                        "Are you sure you want to sell this [${construction.name}]?",
-                        sellText,
-                        restoreDefault = {
-                            cityScreen.update()
-                        }
-                    ) {
-                        cityScreen.city.sellBuilding(construction.name)
-                        cityScreen.clearSelection()
-                        cityScreen.update()
-                    }.open()
-                }
+                val isFree = cityScreen.hasFreeBuilding(construction)
+                val enableSell = !isFree &&
+                    !cityScreen.city.isPuppet &&
+                    cityScreen.canChangeState &&
+                    (!cityScreen.city.hasSoldBuildingThisTurn || cityScreen.city.civ.gameInfo.gameParameters.godMode)
+                sellBuildingButton.isEnabled = enableSell
+                if (enableSell)
+                    sellBuildingButton.onClick(UncivSound.Coin) {
+                        sellBuildingButton.disable()
+                        sellBuildingClicked(construction, sellText)
+                    }
 
                 if (cityScreen.city.hasSoldBuildingThisTurn && !cityScreen.city.civ.gameInfo.gameParameters.godMode
                         || cityScreen.city.isPuppet
@@ -125,4 +133,25 @@ class ConstructionInfoTable(val cityScreen: CityScreen): Table() {
         }
     }
 
+    private fun sellBuildingClicked(construction: Building, sellText: String) {
+        cityScreen.closeAllPopups()
+
+        ConfirmPopup(
+            cityScreen,
+            "Are you sure you want to sell this [${construction.name}]?",
+            sellText,
+            restoreDefault = {
+                cityScreen.update()
+            }
+        ) {
+            sellBuildingConfirmed(construction)
+        }.open()
+    }
+
+    private fun sellBuildingConfirmed(construction: Building) {
+        cityScreen.city.sellBuilding(construction)
+        cityScreen.clearSelection()
+        cityScreen.update()
+    }
+    
 }

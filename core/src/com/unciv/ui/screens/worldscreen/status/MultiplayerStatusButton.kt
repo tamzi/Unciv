@@ -2,15 +2,11 @@ package com.unciv.ui.screens.worldscreen.status
 
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Actor
-import com.badlogic.gdx.scenes.scene2d.actions.Actions
-import com.badlogic.gdx.scenes.scene2d.actions.RepeatAction
 import com.badlogic.gdx.scenes.scene2d.ui.Button
 import com.badlogic.gdx.scenes.scene2d.ui.Cell
 import com.badlogic.gdx.scenes.scene2d.ui.HorizontalGroup
 import com.badlogic.gdx.scenes.scene2d.ui.Image
 import com.badlogic.gdx.scenes.scene2d.ui.Label
-import com.badlogic.gdx.scenes.scene2d.ui.Stack
-import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.Disposable
 import com.unciv.UncivGame
 import com.unciv.logic.event.EventBus
@@ -19,37 +15,38 @@ import com.unciv.logic.multiplayer.MultiplayerGameNameChanged
 import com.unciv.logic.multiplayer.MultiplayerGameUpdateEnded
 import com.unciv.logic.multiplayer.MultiplayerGameUpdateStarted
 import com.unciv.logic.multiplayer.MultiplayerGameUpdated
-import com.unciv.logic.multiplayer.OnlineMultiplayerGame
+import com.unciv.logic.multiplayer.MultiplayerGame
 import com.unciv.logic.multiplayer.isUsersTurn
+import com.unciv.models.translations.tr
+import com.unciv.ui.components.extensions.setSize
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.components.widgets.LoadingImage
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.screens.basescreen.BaseScreen
-import com.unciv.ui.components.extensions.onClick
-import com.unciv.ui.components.extensions.setSize
 import com.unciv.utils.Concurrency
 import com.unciv.utils.launchOnGLThread
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import java.time.Duration
-import java.time.Instant
 
 class MultiplayerStatusButton(
     screen: BaseScreen,
-    curGame: OnlineMultiplayerGame?
+    curGame: MultiplayerGame?
 ) : Button(BaseScreen.skin), Disposable {
     private var curGameName = curGame?.name
-    private val multiplayerImage = createMultiplayerImage()
-    private val loadingImage = createLoadingImage()
+    private val loadingImage = LoadingImage(style = LoadingImage.Style(
+        idleImageName = "OtherIcons/Multiplayer",
+        idleIconColor = Color.WHITE,
+        minShowTime = 500
+    ))
     private val turnIndicator = TurnIndicator()
     private val turnIndicatorCell: Cell<Actor>
     private val gameNamesWithCurrentTurn = getInitialGamesWithCurrentTurn()
-    private var loadingStarted: Instant? = null
 
     private val events = EventBus.EventReceiver()
-    private var loadStopJob: Job? = null
 
     init {
         turnIndicatorCell = add().padTop(10f).padBottom(10f)
-        add(Stack(multiplayerImage, loadingImage)).pad(5f)
+        add(loadingImage).pad(5f)
 
         updateTurnIndicator(flash = false) // no flash since this is just the initial construction
         events.receive(MultiplayerGameUpdated::class) {
@@ -78,35 +75,11 @@ class MultiplayerStatusButton(
     }
 
     private fun startLoading() {
-        loadingStarted = Instant.now()
-
-        if (UncivGame.Current.settings.continuousRendering) {
-            loadingImage.clearActions()
-            loadingImage.addAction(Actions.forever(Actions.rotateBy(-90f, 1f)))
-        }
-
-        loadingImage.isVisible = true
-
-        multiplayerImage.color.a = 0.4f
+        loadingImage.show()
     }
 
     private fun stopLoading() {
-        val loadingTime = Duration.between(loadingStarted ?: Instant.now(), Instant.now())
-        val waitFor = if (loadingTime.toMillis() < 500) {
-            // Some servers might reply almost instantly. That's nice and all, but the user will just see a blinking icon in that case
-            // and won't be able to make out what it was. So we just show the loading indicator a little longer even though it's already done.
-            Duration.ofMillis(500 - loadingTime.toMillis())
-        } else {
-            Duration.ZERO
-        }
-        loadStopJob = Concurrency.run("Hide loading indicator") {
-            delay(waitFor.toMillis())
-            launchOnGLThread {
-                loadingImage.clearActions()
-                loadingImage.isVisible = false
-                multiplayerImage.color.a = 1f
-            }
-        }
+        loadingImage.hide()
     }
 
     private fun getInitialGamesWithCurrentTurn(): MutableSet<String> {
@@ -114,27 +87,12 @@ class MultiplayerStatusButton(
     }
 
     /** @return set of gameIds */
-    private fun findGamesToBeNotifiedAbout(games: Iterable<OnlineMultiplayerGame>): MutableSet<String> {
+    private fun findGamesToBeNotifiedAbout(games: Iterable<MultiplayerGame>): MutableSet<String> {
         return games
             .filter { it.name != curGameName }
             .filter { it.preview?.isUsersTurn() == true }
             .map { it.name }
             .toMutableSet()
-    }
-
-
-    private fun createMultiplayerImage(): Image {
-        val img = ImageGetter.getImage("OtherIcons/Multiplayer")
-        img.setSize(40f)
-        return img
-    }
-
-    private fun createLoadingImage(): Image {
-        val img = ImageGetter.getImage("OtherIcons/Loading")
-        img.setSize(40f)
-        img.isVisible = false
-        img.setOrigin(Align.center)
-        return img
     }
 
     private fun updateTurnIndicator(flash: Boolean = true) {
@@ -154,7 +112,7 @@ class MultiplayerStatusButton(
     override fun dispose() {
         events.stopReceiving()
         turnIndicator.dispose()
-        loadStopJob?.cancel()
+        loadingImage.dispose()
     }
 }
 
@@ -172,7 +130,7 @@ private class TurnIndicator : HorizontalGroup(), Disposable {
         if (gamesWithUpdates < 2) {
             gameAmount.remove()
         } else {
-            gameAmount.setText(gamesWithUpdates)
+            gameAmount.setText(gamesWithUpdates.tr())
             addActorAt(0, gameAmount)
         }
     }

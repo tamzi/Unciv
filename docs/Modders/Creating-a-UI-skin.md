@@ -1,8 +1,10 @@
-# How to create a UI skin for Unciv
+# Creating a UI skin
 
 **You should read the [Mods](Mods.md) page first before proceeding**
 
-In order to add a UI skin mod (yes, UI skins are just another type of mod), all you need to do is add your images under `Images/Skins/MyCoolSkinExample` and enable the mod as a permanent visual mod - the game will recognize the skin, and allow you to pick it in the options menu.
+In order to add a UI skin mod (yes, UI skins are just another type of mod), all you need to do is add your images under `Images/Skins/MyCoolSkinExample` and enable the mod as a permanent visual mod.
+
+The game will then recognize the skin, and allow you to pick it in the options menu.
 
 Just like [tilesets](Creating-a-custom-tileset.md), UI skins can be used to alter the appearance of Unciv. Please note that UI skins do not support custom icons and fonts and not every UI element can be customized yet too.
 
@@ -34,7 +36,7 @@ These shapes are used all over Unciv and can be replaced to make a lot of UI ele
 <!--- DO NOT REMOVE OR MODIFY THIS LINE UI_ELEMENT_TABLE_REGION -->
 | Directory | Name | Default shape | Image |
 |---|:---:|:---:|---|
-|  | Border | null | |
+| AnimatedMenu/ | Button | roundedEdgeRectangleMid | |
 | CityScreen/ | CityPickerTable | roundedEdgeRectangle | |
 | CityScreen/CitizenManagementTable/ | AvoidCell | null | |
 | CityScreen/CitizenManagementTable/ | FocusCell | null | |
@@ -53,10 +55,14 @@ These shapes are used all over Unciv and can be replaced to make a lot of UI ele
 | CityScreen/ConstructionInfoTable/ | Background | null | |
 | CityScreen/ConstructionInfoTable/ | SelectedConstructionTable | null | |
 | CivilopediaScreen/ | EntryButton | null | |
+| DiplomacyScreen/ | LeftSide | null | |
+| DiplomacyScreen/ | RightSide | null | |
+| DiplomacyScreen/ | SelectedCiv | null | |
+| General/ | AnimatedMenu | roundedEdgeRectangle | |
 | General/ | Border | null | |
 | General/ | ExpanderTab | null | |
 | General/ | HealthBar | null | |
-| General/ | KeyCapturingButton | null | |
+| General/ | KeyCapturingButton | roundedEdgeRectangleSmall | |
 | General/ | TabbedPager | null | |
 | General/ | Tooltip | roundedEdgeRectangle | |
 | General/Popup/ | Background | null | |
@@ -66,6 +72,7 @@ These shapes are used all over Unciv and can be replaced to make a lot of UI ele
 | LoadGameScreen/ | TopTable | null | |
 | MainMenuScreen/ | Background | null | |
 | MainMenuScreen/ | MenuButton | roundedEdgeRectangle | |
+| MainMenuScreen/ | Version | roundedEdgeRectangle | |
 | MapEditor/MapEditorToolsDrawer/ | Handle | null | |
 | ModManagementOptions/ | ExpanderTab | null | |
 | ModManagementScreen/ | BottomTable | null | |
@@ -88,6 +95,33 @@ These shapes are used all over Unciv and can be replaced to make a lot of UI ele
 | OverviewScreen/TradesOverviewTab/ | OffersTable | null | |
 | OverviewScreen/UnitOverviewTab/ | UnitSupplyTable | null | |
 | PlayerReadyScreen/ | Background | null | |
+| PolicyScreen/ | PolicyBranchAdoptButton | roundedEdgeRectangleSmall | |
+| PolicyScreen/ | PolicyBranchAdoptButtonBorder | roundedEdgeRectangleSmall | |
+| PolicyScreen/ | PolicyBranchBackground | rectangleWithOutline | |
+| PolicyScreen/ | PolicyBranchBackgroundBorder | rectangleWithOutline | |
+| PolicyScreen/ | PolicyBranchHeader | rectangleWithOutline | |
+| PolicyScreen/ | PolicyBranchHeaderBorder | rectangleWithOutline | |
+| PolicyScreen/Colors/ | BranchBGAdopted | 50,45,5 | |
+| PolicyScreen/Colors/ | BranchBGCompleted | 255,205,0 | |
+| PolicyScreen/Colors/ | BranchBGNotAdopted | 5,45,65 | |
+| PolicyScreen/Colors/ | BranchHeaderBG | 47,90,92 | |
+| PolicyScreen/Colors/ | BranchLabelAdopted | 150,70,40 | |
+| PolicyScreen/Colors/ | BranchLabelNotPickable | 0xffffff7f | |
+| PolicyScreen/Colors/ | BranchLabelPickable | WHITE | |
+| PolicyScreen/Colors/ | ButtonBGAdopted | 1,17,19 | |
+| PolicyScreen/Colors/ | ButtonBGAdoptedSelected | 1,17,19 | |
+| PolicyScreen/Colors/ | ButtonBGNotPickable | 20,20,20 | |
+| PolicyScreen/Colors/ | ButtonBGNotPickableSelected | 20,20,20 | |
+| PolicyScreen/Colors/ | ButtonBGPickable | 32,46,64 | |
+| PolicyScreen/Colors/ | ButtonBGPickableSelected | 37,87,82 | |
+| PolicyScreen/Colors/ | ButtonIconAdopted | GOLD | |
+| PolicyScreen/Colors/ | ButtonIconAdoptedSelected | GOLD | |
+| PolicyScreen/Colors/ | ButtonIconNotPickable | 0xffffff33 | |
+| PolicyScreen/Colors/ | ButtonIconNotPickableSelected | 0xffffff33 | |
+| PolicyScreen/Colors/ | ButtonIconPickable | WHITE | |
+| PolicyScreen/Colors/ | ButtonIconPickableSelected | WHITE | |
+| PromotionScreen/ | PromotionButton | roundedEdgeRectangleMid | |
+| PromotionScreen/ | PromotionButtonBorder | roundedEdgeRectangleMidBorder | |
 | TechPickerScreen/ | Background | null | |
 | TechPickerScreen/ | BottomTable | null | |
 | TechPickerScreen/ | CurrentTechColor | 72, 147, 175 | |
@@ -96,7 +130,6 @@ These shapes are used all over Unciv and can be replaced to make a lot of UI ele
 | TechPickerScreen/ | ResearchedFutureTechColor | 127, 50, 0 | |
 | TechPickerScreen/ | ResearchedTechColor | 255, 215, 0 | |
 | TechPickerScreen/ | TechButtonIconsOutline | roundedEdgeRectangleSmall | |
-| UnitUpgradeMenu/ | Button | roundedEdgeRectangleMid | |
 | VictoryScreen/ | CivGroup | roundedEdgeRectangle | |
 | WorldScreen/ | AirUnitTable | null | |
 | WorldScreen/ | BattleTable | null | |
@@ -105,6 +138,12 @@ These shapes are used all over Unciv and can be replaced to make a lot of UI ele
 | WorldScreen/ | TileInfoTable | null | |
 | WorldScreen/ | TutorialTaskTable | null | |
 | WorldScreen/ | UnitTable | roundedEdgeRectangleMid | |
+| WorldScreen/CityButton/ | AirUnitTable | roundedEdgeRectangleSmall | |
+| WorldScreen/CityButton/ | AirUnitTableBorder | roundedEdgeRectangleSmall | |
+| WorldScreen/CityButton/ | DefenceTable | roundedTopEdgeRectangleSmall | |
+| WorldScreen/CityButton/ | DefenceTableBorder | roundedTopEdgeRectangleSmallBorder | |
+| WorldScreen/CityButton/ | IconTable | roundedEdgeRectangleMid | |
+| WorldScreen/CityButton/ | IconTableBorder | roundedEdgeRectangleMidBorder | |
 | WorldScreen/CityButton/ | InfluenceBar | null | |
 | WorldScreen/Minimap/ | Background | null | |
 | WorldScreen/Minimap/ | Border | null | |
@@ -114,6 +153,9 @@ These shapes are used all over Unciv and can be replaced to make a lot of UI ele
 | WorldScreen/TopBar/ | ResourceTable | null | |
 | WorldScreen/TopBar/ | RightAttachment | roundedEdgeRectangle | |
 | WorldScreen/TopBar/ | StatsTable | null | |
+| WorldScreenMusicPopup/TrackList/ | Down | null | |
+| WorldScreenMusicPopup/TrackList/ | Over | null | |
+| WorldScreenMusicPopup/TrackList/ | Up | null | |
 <!--- DO NOT REMOVE OR MODIFY THIS LINE UI_ELEMENT_TABLE_REGION_END -->
 
 ## SkinConfig

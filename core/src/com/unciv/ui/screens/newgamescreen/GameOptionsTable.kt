@@ -8,30 +8,30 @@ import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
 import com.unciv.UncivGame
 import com.unciv.logic.civilization.PlayerType
+import com.unciv.models.metadata.BaseRuleset
 import com.unciv.models.metadata.GameParameters
 import com.unciv.models.metadata.Player
+import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
 import com.unciv.models.ruleset.nation.Nation
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.translations.tr
 import com.unciv.ui.audio.MusicMood
 import com.unciv.ui.audio.MusicTrackChooserFlags
-import com.unciv.ui.components.AutoScrollPane
-import com.unciv.ui.components.ExpanderTab
-import com.unciv.ui.components.KeyCharAndCode
-import com.unciv.ui.components.UncivSlider
-import com.unciv.ui.components.extensions.keyShortcuts
-import com.unciv.ui.components.extensions.onActivation
-import com.unciv.ui.components.extensions.onChange
-import com.unciv.ui.components.extensions.onClick
+import com.unciv.ui.components.extensions.getCloseButton
 import com.unciv.ui.components.extensions.pad
 import com.unciv.ui.components.extensions.toCheckBox
 import com.unciv.ui.components.extensions.toImageButton
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.input.onChange
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.components.widgets.AutoScrollPane
+import com.unciv.ui.components.widgets.ExpanderTab
+import com.unciv.ui.components.widgets.TranslatedSelectBox
+import com.unciv.ui.components.widgets.UncivSlider
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.popups.Popup
-import com.unciv.ui.popups.ToastPopup
 import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.ui.screens.multiplayerscreens.MultiplayerHelpers
 import kotlin.reflect.KMutableProperty0
@@ -42,33 +42,44 @@ class GameOptionsTable(
     private val updatePlayerPickerTable: (desiredCiv: String) -> Unit,
     private val updatePlayerPickerRandomLabel: () -> Unit
 ) : Table(BaseScreen.skin) {
-    var gameParameters = previousScreen.gameSetupInfo.gameParameters
-    val ruleset = previousScreen.ruleset
-    var locked = false
-    var modCheckboxes: ModCheckboxTable? = null
-        private set
+    private var gameParameters = previousScreen.gameSetupInfo.gameParameters
+    private var ruleset = previousScreen.ruleset
+    internal var locked = false
+
+    private var baseRulesetHash = gameParameters.baseRuleset.hashCode()
+
+    /** Holds the UI for the Extension Mods
+     *
+     *  Attention: This Widget is a little tricky due to the UI changes to support portrait mode:
+     *  *  With `isPortrait==false`, this Table will **contain** `modCheckboxes`
+     *  *  With `isPortrait==true`, this Table will **only initialize** `modCheckboxes` and [NewGameScreen] will fetch and place it.
+     *
+     *  The second reason this is public: [NewGameScreen] accesses [ModCheckboxTable.savedModcheckResult] for display.
+     */
+    internal val modCheckboxes = getModCheckboxes(isPortrait = isPortrait)
+
     // Remember this so we can unselect it when the pool dialog returns an empty pool
     private var randomNationsPoolCheckbox: CheckBox? = null
+    // Allow resetting base ruleset from outside
+    private var baseRulesetSelectBox: TranslatedSelectBox? = null
 
     init {
-        getGameOptionsTable()
         background = BaseScreen.skinStrings.getUiBackground("NewGameScreen/GameOptionsTable", tintColor = BaseScreen.skinStrings.skinConfig.clearColor)
+        top()
+        defaults().pad(5f)
+        update()
     }
 
     fun update() {
         clear()
-        getGameOptionsTable()
-    }
 
-    private fun getGameOptionsTable() {
-        top()
-        defaults().pad(5f)
-
-        // We assign this first to make sure addBaseRulesetSelectBox doesn't reference a null object
-        modCheckboxes =
-            if (isPortrait)
-                getModCheckboxes(isPortrait = true)
-            else getModCheckboxes()
+        // Mods may have changed (e.g. custom map selection)
+        modCheckboxes.updateSelection()
+        val newBaseRulesetHash = gameParameters.baseRuleset.hashCode()
+        if (newBaseRulesetHash != baseRulesetHash) {
+            baseRulesetHash = newBaseRulesetHash
+            modCheckboxes.setBaseRuleset(gameParameters.baseRuleset)
+        }
 
         add(Table().apply {
             defaults().pad(5f)
@@ -110,8 +121,7 @@ class GameOptionsTable(
             it.addRagingBarbariansCheckbox()
             it.addOneCityChallengeCheckbox()
             it.addNuclearWeaponsCheckbox()
-            if (UncivGame.Current.settings.enableEspionageOption)
-                it.addEnableEspionageCheckbox()
+            it.addEnableEspionageCheckbox()
             it.addNoStartBiasCheckbox()
             it.addRandomPlayersCheckbox()
             it.addRandomCityStatesCheckbox()
@@ -162,7 +172,7 @@ class GameOptionsTable(
             { gameParameters.nuclearWeaponsEnabled = it }
 
     private fun Table.addIsOnlineMultiplayerCheckbox() =
-            addCheckbox("Online Multiplayer", gameParameters.isOnlineMultiplayer)
+            addCheckbox("Online Multiplayer", gameParameters.isOnlineMultiplayer, lockable = false)
             { shouldUseMultiplayer ->
                 gameParameters.isOnlineMultiplayer = shouldUseMultiplayer
                 updatePlayerPickerTable("")
@@ -271,7 +281,6 @@ class GameOptionsTable(
     ) {
         if (maxValue < minValue) return
 
-        @Suppress("JoinDeclarationAndAssignment")  // it's a forward declaration!
         lateinit var maxSlider: UncivSlider  // lateinit safe because the closure won't use it until the user operates a slider
         val minSlider = UncivSlider(minValue.toFloat(), maxValue.toFloat(), 1f, initial = minField.get().toFloat()) {
             val newMin = it.toInt()
@@ -337,13 +346,13 @@ class GameOptionsTable(
         }
         slider.isDisabled = locked
         val snapValues = floatArrayOf(100f,150f,200f,250f,300f,350f,400f,450f,500f,550f,600f,650f,700f,750f,800f,900f,1000f,1250f,1500f)
-        slider.setSnapToValues(snapValues, 125f)
+        slider.setSnapToValues(threshold = 125f, *snapValues)
         return slider
     }
 
-    private fun Table.addSelectBox(text: String, values: Collection<String>, initialState: String, onChange: (newValue: String) -> String?) {
+    private fun Table.addSelectBox(text: String, values: Collection<String>, initialState: String, onChange: (newValue: String) -> String?): TranslatedSelectBox {
         add(text.toLabel(hideIcons = true)).left()
-        val selectBox = TranslatedSelectBox(values, initialState, BaseScreen.skin)
+        val selectBox = TranslatedSelectBox(values, initialState)
         selectBox.isDisabled = locked
         selectBox.onChange {
             val changedValue = onChange(selectBox.selected.value)
@@ -351,6 +360,7 @@ class GameOptionsTable(
         }
         onChange(selectBox.selected.value)
         add(selectBox).fillX().row()
+        return selectBox
     }
 
     private fun Table.addDifficultySelectBox() {
@@ -359,50 +369,36 @@ class GameOptionsTable(
     }
 
     private fun Table.addBaseRulesetSelectBox() {
-        val sortedBaseRulesets = RulesetCache.getSortedBaseRulesets()
-        if (sortedBaseRulesets.size < 2) return
-
-        addSelectBox(
-            "{Base Ruleset}:",
-            sortedBaseRulesets,
-            gameParameters.baseRuleset
-        ) { newBaseRuleset ->
+        fun onBaseRulesetSelected(newBaseRuleset: String): String? {
             val previousSelection = gameParameters.baseRuleset
-            if (newBaseRuleset == gameParameters.baseRuleset) return@addSelectBox null
+            if (newBaseRuleset == previousSelection) return null
 
             // Check if this mod is well-defined
-            val baseRulesetErrors = RulesetCache[newBaseRuleset]!!.checkModLinks()
+            val baseRulesetErrors = RulesetCache[newBaseRuleset]!!.getErrorList()
             if (baseRulesetErrors.isError()) {
-                val toastMessage = "The mod you selected is incorrectly defined!".tr() + "\n\n${baseRulesetErrors.getErrorText()}"
-                ToastPopup(toastMessage, previousScreen as BaseScreen, 5000L)
-                return@addSelectBox previousSelection
+                baseRulesetErrors.showWarnOrErrorToast(previousScreen as BaseScreen)
+                return previousSelection
             }
 
             // If so, add it to the current ruleset
             gameParameters.baseRuleset = newBaseRuleset
+            modCheckboxes.setBaseRuleset(newBaseRuleset)  // Treats declared incompatibility
             onChooseMod(newBaseRuleset)
 
-            // Check if the ruleset in it's entirety is still well-defined
-            val modLinkErrors = ruleset.checkModLinks()
+            // Check if the ruleset in its entirety is still well-defined
+            val modLinkErrors = ruleset.getErrorList()
             if (modLinkErrors.isError()) {
-                gameParameters.mods.clear()
+                modCheckboxes.disableAllCheckboxes()  // also clears gameParameters.mods
                 reloadRuleset()
-                val toastMessage =
-                    "This base ruleset is not compatible with the previously selected\nextension mods. They have been disabled.".tr()
-                ToastPopup(toastMessage, previousScreen as BaseScreen, 5000L)
-
-                modCheckboxes!!.disableAllCheckboxes()
-            } else if (modLinkErrors.isWarnUser()) {
-                val toastMessage =
-                    "{The mod combination you selected has problems.}\n{You can play it, but don't expect everything to work!}".tr() +
-                    "\n\n${modLinkErrors.getErrorText()}"
-                ToastPopup(toastMessage, previousScreen as BaseScreen, 5000L)
             }
+            modLinkErrors.showWarnOrErrorToast(previousScreen as BaseScreen)
 
-            modCheckboxes!!.setBaseRuleset(newBaseRuleset)
-
-            null
+            return null
         }
+
+        val sortedBaseRulesets = RulesetCache.getSortedBaseRulesets()
+        if (sortedBaseRulesets.size < 2) return
+        baseRulesetSelectBox = addSelectBox("{Base Ruleset}:", sortedBaseRulesets, gameParameters.baseRuleset, ::onBaseRulesetSelected)
     }
 
     private fun Table.addGameSpeedSelectBox() {
@@ -411,7 +407,11 @@ class GameOptionsTable(
     }
 
     private fun Table.addEraSelectBox() {
-        if (ruleset.technologies.isEmpty()) return // mod with no techs
+        if (ruleset.eras.isEmpty()) return // mod with no techs
+        if (ruleset.modOptions.hasUnique(UniqueType.CanOnlyStartFromStartingEra)){
+            gameParameters.startingEra = ruleset.eras.keys.first()
+            return
+        }
         val eras = ruleset.eras.keys
         addSelectBox("{Starting Era}:", eras, gameParameters.startingEra)
         { gameParameters.startingEra = it; null }
@@ -442,6 +442,22 @@ class GameOptionsTable(
         add(victoryConditionsTable).colspan(2).row()
     }
 
+    fun updateRuleset(ruleset: Ruleset) {
+        this.ruleset = ruleset
+        gameParameters.acceptedModCheckErrors = ""
+        modCheckboxes.updateSelection()
+        modCheckboxes.setBaseRuleset(gameParameters.baseRuleset)
+    }
+
+    fun resetRuleset() {
+        val rulesetName = BaseRuleset.Civ_V_GnK.fullName
+        gameParameters.baseRuleset = rulesetName
+        modCheckboxes.setBaseRuleset(rulesetName)
+        modCheckboxes.disableAllCheckboxes()
+        baseRulesetSelectBox?.setSelected(rulesetName)
+        reloadRuleset()
+    }
+
     private fun reloadRuleset() {
         ruleset.clear()
         val newRuleset = RulesetCache.getComplexRuleset(gameParameters)
@@ -449,6 +465,7 @@ class GameOptionsTable(
         ruleset.mods += gameParameters.baseRuleset
         ruleset.mods += gameParameters.mods
         ruleset.modOptions = newRuleset.modOptions
+        gameParameters.acceptedModCheckErrors = ""
 
         ImageGetter.setNewRuleset(ruleset)
         UncivGame.Current.musicController.setModList(gameParameters.getModsAndBaseRuleset())
@@ -461,7 +478,7 @@ class GameOptionsTable(
     }
 
     private fun onChooseMod(mod: String) {
-        val activeMods: LinkedHashSet<String> = LinkedHashSet(gameParameters.getModsAndBaseRuleset())
+        val activeMods = gameParameters.getModsAndBaseRuleset()
         UncivGame.Current.translations.translationActiveMods = activeMods
         reloadRuleset()
         update()
@@ -479,6 +496,11 @@ class GameOptionsTable(
         }
 
         updatePlayerPickerTable(desiredCiv)
+    }
+
+    fun changeGameParameters(newGameParameters: GameParameters) {
+        gameParameters = newGameParameters
+        modCheckboxes.changeGameParameters(newGameParameters)
     }
 }
 
@@ -516,7 +538,7 @@ private class RandomNationPickerPopup(
     init {
         val sortedNations = previousScreen.ruleset.nations.values
                 .filter { it.isMajorCiv }
-                .sortedWith(compareBy(UncivGame.Current.settings.getCollatorFromLocale()) { it.name.tr() })
+                .sortedWith(compareBy(UncivGame.Current.settings.getCollatorFromLocale()) { it.name.tr(hideIcons = true) })
         allNationTables = ArrayList(
             sortedNations.map { NationTable(it, civBlocksWidth, 0f) }  // no need for min height
         )
@@ -542,9 +564,7 @@ private class RandomNationPickerPopup(
         update()
         pack()
 
-        val closeButton = "OtherIcons/Close".toImageButton(Color.FIREBRICK)
-        closeButton.onActivation { close() }
-        closeButton.keyShortcuts.add(KeyCharAndCode.BACK)
+        val closeButton = getCloseButton(buttonsCircleSize, buttonsIconSize, buttonsBackColor, Color.FIREBRICK) { close() }
         closeButton.setPosition(buttonsOffsetFromEdge, buttonsOffsetFromEdge, Align.bottomLeft)
         innerTable.addActor(closeButton)
         clickBehindToClose = true

@@ -1,10 +1,11 @@
 package com.unciv.app.desktop
 
-import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Pixmap
-import com.unciv.ui.components.FontFamilyData
-import com.unciv.ui.components.FontImplementation
-import com.unciv.ui.components.Fonts
+import com.unciv.UncivGame
+import com.unciv.ui.components.fonts.FontFamilyData
+import com.unciv.ui.components.fonts.FontImplementation
+import com.unciv.ui.components.fonts.FontMetricsCommon
+import com.unciv.ui.components.fonts.Fonts
 import java.awt.Color
 import java.awt.Font
 import java.awt.FontMetrics
@@ -43,7 +44,7 @@ class DesktopFont : FontImplementation {
         try
         {
             // Try to create and register new font
-            val fontFile = Gdx.files.local(path).file()
+            val fontFile = UncivGame.Current.files.getLocalFile(path).file()
             val ge = GraphicsEnvironment.getLocalGraphicsEnvironment()
             font = Font.createFont(Font.TRUETYPE_FONT, fontFile).deriveFont(size.toFloat())
             ge.registerFont(font)
@@ -60,19 +61,26 @@ class DesktopFont : FontImplementation {
         return font.size
     }
 
-    override fun getCharPixmap(char: Char): Pixmap {
-        var width = metric.charWidth(char)
-        var height = metric.ascent + metric.descent
+    override fun getCharPixmap(char: Char) = getCharPixmapCommon(char.toString(), metric.charWidth(char))
+
+    override fun getCharPixmap(symbolString: String) = getCharPixmapCommon(symbolString, metric.stringWidth(symbolString))
+
+    private fun getCharPixmapCommon(symbolString: String, measuredWidth: Int): Pixmap {
+        var width = measuredWidth
+        var height = metric.height
         if (width == 0) {
+            // This happens e.g. for the Tab character
             height = font.size
             width = height
         }
+
         val bi = BufferedImage(width, height, BufferedImage.TYPE_4BYTE_ABGR)
         val g = bi.createGraphics()
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
         g.font = font
         g.color = Color.WHITE
-        g.drawString(char.toString(), 0, metric.ascent)
+        g.drawString(symbolString, 0, metric.leading + metric.ascent)
+
         val pixmap = Pixmap(bi.width, bi.height, Pixmap.Format.RGBA8888)
         val data = bi.getRGB(0, 0, bi.width, bi.height, null, 0, bi.width)
         for (i in 0 until bi.width) {
@@ -92,4 +100,16 @@ class DesktopFont : FontImplementation {
             .map { FontFamilyData(it.family, it.getFamily(Locale.ROOT)) }
             .distinctBy { it.invariantName }
     }
+
+    // Note: AWT uses the FontDesignMetrics implementation in our case, which has more precise
+    // float fields but rounds to integers to satisfy the interface.
+    // Additionally, the rounding is weird: x.049 rounds down, x.051 rounds up.
+    // There is no way around the privacy crap: FontUtilities.getFont2D(metric.font).getStrike(metric.font, metric.fontRenderContext).getFontMetrics() would work if that last method wasn't private too...
+    // Reflection is out too, since java.desktop refuses to open sun.font - we must die with rounding errors!
+    override fun getMetrics() = FontMetricsCommon(
+        ascent = metric.ascent.toFloat(),
+        descent = metric.descent.toFloat(),
+        height = metric.height.toFloat(),
+        leading = metric.leading.toFloat()
+    )
 }

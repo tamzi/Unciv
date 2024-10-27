@@ -4,9 +4,12 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Group
 import com.badlogic.gdx.scenes.scene2d.ui.Image
 import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.scenes.scene2d.utils.Layout
 import com.badlogic.gdx.utils.Align
 import com.unciv.models.ruleset.Ruleset
+import com.unciv.models.ruleset.unit.Promotion
 import com.unciv.models.stats.Stats
+import com.unciv.models.translations.tr
 import com.unciv.ui.components.extensions.center
 import com.unciv.ui.components.extensions.centerX
 import com.unciv.ui.components.extensions.colorFromRGB
@@ -15,6 +18,17 @@ import com.unciv.ui.components.extensions.surroundWithCircle
 import com.unciv.ui.components.extensions.toGroup
 import com.unciv.ui.components.extensions.toLabel
 
+/**
+ *  ### Manages "portraits" for a subset of RulesetObjects
+ *  - A Portrait will be a classic circular Icon in vanilla
+ *  - Mods can supply portraits in separate texture paths that can fill a square
+ *  - Instantiate through [ImageGetter]`.get<type>Portrait()` methods
+ *  - TODO - that's as far as I understand this - @SomeTroglodyte
+ *  ### Caveat
+ *  - This is a Group and does **not** support [Layout].
+ *  - It sets its own [size] but **paints outside these bounds** - by [borderSize].
+ *  - Typically, if you want one in a Table Cell, add an extra [borderSize] padding to avoid surprises.
+ */
 open class Portrait(val type: Type, val imageName: String, val size: Float, val borderSize: Float = 2f) : Group() {
 
     enum class Type(val directory: String) {
@@ -53,7 +67,6 @@ open class Portrait(val type: Type, val imageName: String, val size: Float, val 
     }
 
     init {
-
         isTransform = false
 
         image = getMainImage()
@@ -66,7 +79,6 @@ open class Portrait(val type: Type, val imageName: String, val size: Float, val 
 
         this.addActor(background)
         this.addActor(image)
-
     }
 
     /** Inner image */
@@ -131,7 +143,7 @@ class PortraitResource(name: String, size: Float, amount: Int = 0) : Portrait(Ty
 
     init {
         if (amount > 0) {
-            val label = amount.toString().toLabel(
+            val label = amount.tr().toLabel(
                 fontSize = 8,
                 fontColor = Color.WHITE,
                 alignment = Align.center)
@@ -145,62 +157,52 @@ class PortraitResource(name: String, size: Float, amount: Int = 0) : Portrait(Ty
         }
     }
 
-    override fun getDefaultInnerBackgroundTint(): Color {
-        return ruleset.tileResources[imageName]?.resourceType?.getColor() ?: Color.WHITE
-    }
+    override fun getDefaultInnerBackgroundTint(): Color =
+        ruleset.tileResources[imageName]?.resourceType?.getColor() ?: Color.WHITE
 }
 
 class PortraitTech(name: String, size: Float) : Portrait(Type.Tech, name, size) {
-    override fun getDefaultOuterBackgroundTint(): Color {
-        return getDefaultImageTint()
-    }
-    override fun getDefaultImageTint(): Color {
-        return ruleset.eras[ruleset.technologies[imageName]?.era()]?.getColor()?.darken(0.6f) ?: Color.BLACK
-    }
+    override fun getDefaultOuterBackgroundTint(): Color = getDefaultImageTint()
+    override fun getDefaultImageTint(): Color =
+        ruleset.eras[ruleset.technologies[imageName]?.era()]?.getColor()?.darken(0.6f) ?: Color.BLACK
 }
 
 class PortraitUnit(name: String, size: Float) : Portrait(Type.Unit, name, size) {
-    override fun getDefaultImageTint(): Color {
-        return Color.BLACK
-    }
+    override fun getDefaultImageTint(): Color = Color.BLACK
 }
 
 class PortraitBuilding(name: String, size: Float) : Portrait(Type.Building, name, size) {
-    override fun getDefaultImageTint(): Color {
-        return Color.BLACK
-    }
+    override fun getDefaultImageTint(): Color = Color.BLACK
 }
 
 class PortraitUnavailableWonderForTechTree(name: String, size: Float) : Portrait(Type.Building, name, size) {
-    override fun getDefaultOuterBackgroundTint(): Color {
-        return Color.RED
-    }
+    override fun getDefaultOuterBackgroundTint(): Color = Color.RED
 }
 
 class PortraitUnique(name: String, size: Float) : Portrait(Type.Unique, name, size) {
-    override fun getDefaultImageTint(): Color {
-        return Color.BLACK
-    }
+    override fun getDefaultImageTint(): Color = Color.BLACK
 }
 
 class PortraitReligion(name: String, size: Float) : Portrait(Type.Religion, name, size) {
-    override fun getDefaultImageTint(): Color {
-        return Color.BLACK
-    }
+    override fun getDefaultImageTint(): Color = Color.BLACK
 }
 
 class PortraitUnitAction(name: String, size: Float) : Portrait(Type.UnitAction, name, size) {
-    override fun getDefaultImageTint(): Color {
-        return Color.BLACK
-    }
+    override fun getDefaultImageTint(): Color = Color.BLACK
 }
 
-class PortraitImprovement(name: String, size: Float, dim: Boolean = false) : Portrait(Type.Improvement, name, size) {
+class PortraitImprovement(name: String, size: Float, dim: Boolean = false, isPillaged: Boolean = false) : Portrait(Type.Improvement, name, size) {
 
     init {
         if (dim) {
             image.color.a = 0.7f
             background.color.a = 0.7f
+        }
+        if (isPillaged) {
+            val pillagedIcon = ImageGetter.getImage("OtherIcons/Fire")
+            pillagedIcon.setSize(width/2, height/2)
+            pillagedIcon.setPosition(width, 0f, Align.bottomRight)
+            addActor(pillagedIcon)
         }
     }
 
@@ -221,7 +223,6 @@ class PortraitImprovement(name: String, size: Float, dim: Boolean = false) : Por
 class PortraitNation(name: String, size: Float) : Portrait(Type.Nation, name, size, size*0.1f) {
 
     override fun getDefaultImage(): Image {
-
         val nation = ruleset.nations[imageName]
         val isCityState = nation != null && nation.isCityState
         val pathCityState = "NationIcons/CityState"
@@ -234,17 +235,11 @@ class PortraitNation(name: String, size: Float) : Portrait(Type.Nation, name, si
         }
     }
 
-    override fun getDefaultInnerBackgroundTint(): Color {
-        return ruleset.nations[imageName]?.getOuterColor() ?: Color.BLACK
-    }
+    override fun getDefaultInnerBackgroundTint(): Color = 
+        ruleset.nations[imageName]?.getOuterColor() ?: Color.BLACK
 
-    override fun getDefaultOuterBackgroundTint(): Color {
-        return getDefaultImageTint()
-    }
-
-    override fun getDefaultImageTint(): Color {
-        return ruleset.nations[imageName]?.getInnerColor() ?: Color.WHITE
-    }
+    override fun getDefaultOuterBackgroundTint(): Color = getDefaultImageTint()
+    override fun getDefaultImageTint(): Color = ruleset.nations[imageName]?.getInnerColor() ?: Color.WHITE
 
 }
 
@@ -266,25 +261,16 @@ class PortraitPromotion(name: String, size: Float) : Portrait(Type.Promotion, na
     }
 
     override fun getDefaultImage(): Image {
+        val (nameWithoutBrackets, level, basePromotionName) = Promotion.getBaseNameAndLevel(imageName)
 
-        val nameWithoutBrackets = imageName.replace("[", "").replace("]", "")
-
-        level = when {
-            nameWithoutBrackets.endsWith(" I") -> 1
-            nameWithoutBrackets.endsWith(" II") -> 2
-            nameWithoutBrackets.endsWith(" III") -> 3
-            else -> 0
-        }
-
-        val basePromotionName = nameWithoutBrackets.dropLast(if (level == 0) 0 else level + 1)
-
+        this.level = level
         val pathWithoutBrackets = "UnitPromotionIcons/$nameWithoutBrackets"
         val pathBase = "UnitPromotionIcons/$basePromotionName"
         val pathUnit = "UnitIcons/${basePromotionName.removeSuffix(" ability")}"
 
         return when {
             ImageGetter.imageExists(pathWithoutBrackets) -> {
-                level = 0
+                this.level = 0
                 ImageGetter.getImage(pathWithoutBrackets)
             }
             ImageGetter.imageExists(pathBase) -> ImageGetter.getImage(pathBase)
@@ -292,17 +278,15 @@ class PortraitPromotion(name: String, size: Float) : Portrait(Type.Promotion, na
             else -> ImageGetter.getImage(pathIconFallback)
         }
     }
+    
+    override fun getDefaultImageTint(): Color = ruleset.unitPromotions[imageName]?.innerColorObject
+        ?: defaultInnerColor
+    override fun getDefaultOuterBackgroundTint(): Color = getDefaultImageTint()
+    override fun getDefaultInnerBackgroundTint(): Color = ruleset.unitPromotions[imageName]?.outerColorObject
+        ?: defaultOuterColor
 
-    override fun getDefaultImageTint(): Color {
-        return colorFromRGB(255, 226, 0)
+    companion object {
+        val defaultInnerColor = colorFromRGB(255, 226, 0)
+        val defaultOuterColor = colorFromRGB(0, 12, 49)
     }
-
-    override fun getDefaultOuterBackgroundTint(): Color {
-        return getDefaultImageTint()
-    }
-
-    override fun getDefaultInnerBackgroundTint(): Color {
-        return colorFromRGB(0, 12, 49)
-    }
-
 }

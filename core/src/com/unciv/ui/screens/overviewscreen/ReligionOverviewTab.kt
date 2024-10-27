@@ -6,20 +6,18 @@ import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
-import com.unciv.UncivGame
 import com.unciv.logic.civilization.Civilization
 import com.unciv.models.Religion
 import com.unciv.models.ruleset.Belief
 import com.unciv.models.translations.fillPlaceholders
 import com.unciv.models.translations.tr
-import com.unciv.ui.components.ExpanderTab
-import com.unciv.ui.screens.civilopediascreen.CivilopediaScreen
+import com.unciv.ui.components.widgets.ExpanderTab
 import com.unciv.ui.screens.civilopediascreen.MarkupRenderer
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.ui.components.extensions.addSeparator
 import com.unciv.ui.components.extensions.disable
-import com.unciv.ui.components.extensions.onClick
+import com.unciv.ui.components.input.onClick
 import com.unciv.ui.components.extensions.setFontSize
 import com.unciv.ui.components.extensions.toLabel
 import kotlin.math.max
@@ -31,9 +29,7 @@ class ReligionOverviewTab(
 ) : EmpireOverviewTab(viewingPlayer, overviewScreen) {
     class ReligionTabPersistableData(
         var selectedReligion: String? = null
-    ) : EmpireOverviewTabPersistableData() {
-        override fun isEmpty() = selectedReligion == null
-    }
+    ) : EmpireOverviewTabPersistableData()
     override val persistableData = (persistedData as? ReligionTabPersistableData) ?: ReligionTabPersistableData()
 
     private val civStatsTable = Table()
@@ -84,14 +80,14 @@ class ReligionOverviewTab(
             it.defaults().padTop(10f)
             for ((text, num) in manager.remainingFoundableReligionsBreakdown()) {
                 it.add(text.toLabel())
-                it.add(num.toString().toLabel(alignment = Align.right)).right().row()
+                it.add(num.tr().toLabel(alignment = Align.right)).right().row()
             }
         }
         add(religionCountExpander).colspan(2).growX().row()
 
         if (manager.canGenerateProphet(ignoreFaithAmount = true)) {
             add("Minimal Faith required for\nthe next [great prophet equivalent]:"
-                .fillPlaceholders(manager.getGreatProphetEquivalent()!!)
+                .fillPlaceholders(manager.getGreatProphetEquivalent()!!.name)
                 .toLabel()
             )
             add(
@@ -197,7 +193,7 @@ class ReligionOverviewTab(
         MarkupRenderer.render(
             belief.getCivilopediaTextLines(withHeader = true)
         ) {
-            UncivGame.Current.pushScreen(CivilopediaScreen(gameInfo.ruleset, link = it))
+            overviewScreen.openCivilopedia(it)
         }.apply {
             background = BaseScreen.skinStrings.getUiBackground(
                 "OverviewScreen/ReligionOverviewTab/BeliefDescription",

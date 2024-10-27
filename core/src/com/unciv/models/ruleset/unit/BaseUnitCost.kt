@@ -9,14 +9,26 @@ import com.unciv.ui.components.extensions.toPercent
 
 class BaseUnitCost(val baseUnit: BaseUnit) {
 
-    fun getProductionCost(civInfo: Civilization): Int {
+    fun getProductionCost(civInfo: Civilization, city: City?): Int {
         var productionCost = baseUnit.cost.toFloat()
-        if (civInfo.isCityState())
-            productionCost *= 1.5f
-        productionCost *= if (civInfo.isHuman())
+
+        val stateForConditionals = StateForConditionals(civInfo, city)
+        for (unique in baseUnit.getMatchingUniques(UniqueType.CostIncreasesPerCity, stateForConditionals))
+            productionCost += civInfo.cities.size * unique.params[0].toInt()
+
+        for (unique in baseUnit.getMatchingUniques(UniqueType.CostIncreasesWhenBuilt, stateForConditionals))
+            productionCost += civInfo.civConstructions.builtItemsWithIncreasingCost[baseUnit.name] * unique.params[0].toInt()
+
+        for (unique in baseUnit.getMatchingUniques(UniqueType.CostPercentageChange, stateForConditionals))
+            productionCost *= unique.params[0].toPercent()
+
+        productionCost *= if (civInfo.isCityState)
+            1.5f
+        else if (civInfo.isHuman())
             civInfo.getDifficulty().unitCostModifier
         else
             civInfo.gameInfo.getDifficulty().aiUnitCostModifier
+
         productionCost *= civInfo.gameInfo.speed.productionCostModifier
         return productionCost.toInt()
     }
@@ -76,7 +88,7 @@ class BaseUnitCost(val baseUnit: BaseUnit) {
     }
 
 
-    fun getBaseBuyCosts(city: City, stat: Stat): Sequence<Int> {
+    fun getBaseBuyCosts(city: City, stat: Stat): Sequence<Float> {
         val conditionalState = StateForConditionals(civInfo = city.civ, city = city)
         return sequence {
             yieldAll(city.getMatchingUniques(UniqueType.BuyUnitsIncreasingCost, conditionalState)
@@ -89,12 +101,12 @@ class BaseUnitCost(val baseUnit: BaseUnit) {
                         it.params[1].toInt(),
                         it.params[4].toInt(),
                         city.civ.civConstructions.boughtItemsWithIncreasingPrice[baseUnit.name]
-                    )
+                    ) * city.civ.gameInfo.speed.statCostModifiers[stat]!!
                 }
             )
             yieldAll(city.getMatchingUniques(UniqueType.BuyUnitsByProductionCost, conditionalState)
                 .filter { it.params[1] == stat.name && baseUnit.matchesFilter(it.params[0]) }
-                .map { getProductionCost(city.civ) * it.params[2].toInt() }
+                .map { (getProductionCost(city.civ, city) * it.params[2].toInt()).toFloat() }
             )
 
             if (city.getMatchingUniques(UniqueType.BuyUnitsWithStat, conditionalState)
@@ -103,14 +115,14 @@ class BaseUnitCost(val baseUnit: BaseUnit) {
                                     && baseUnit.matchesFilter(it.params[0])
                                     && city.matchesFilter(it.params[2])
                         }
-            ) yield(city.civ.getEra().baseUnitBuyCost)
+            ) yield(city.civ.getEra().baseUnitBuyCost * city.civ.gameInfo.speed.statCostModifiers[stat]!!)
 
             yieldAll(city.getMatchingUniques(UniqueType.BuyUnitsForAmountStat, conditionalState)
                 .filter {
                     it.params[2] == stat.name
                             && baseUnit.matchesFilter(it.params[0])
                             && city.matchesFilter(it.params[3])
-                }.map { it.params[1].toInt() }
+                }.map { it.params[1].toInt() * city.civ.gameInfo.speed.statCostModifiers[stat]!! }
             )
         }
     }

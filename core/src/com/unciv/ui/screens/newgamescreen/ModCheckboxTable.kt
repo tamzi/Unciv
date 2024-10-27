@@ -1,41 +1,60 @@
 package com.unciv.ui.screens.newgamescreen
 
+import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.scenes.scene2d.ui.CheckBox
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
+import com.unciv.models.metadata.BaseRuleset
+import com.unciv.models.metadata.GameParameters
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
-import com.unciv.models.ruleset.RulesetErrorList
-import com.unciv.models.translations.tr
-import com.unciv.ui.popups.ToastPopup
-import com.unciv.ui.screens.basescreen.BaseScreen
-import com.unciv.ui.components.ExpanderTab
-import com.unciv.ui.components.extensions.onChange
+import com.unciv.models.ruleset.validation.ModCompatibility
 import com.unciv.ui.components.extensions.pad
 import com.unciv.ui.components.extensions.toCheckBox
+import com.unciv.ui.components.input.onChange
+import com.unciv.ui.components.widgets.ExpanderTab
+import com.unciv.ui.popups.ToastPopup
+import com.unciv.ui.screens.basescreen.BaseScreen
 
 /**
  * A widget containing one expander for extension mods.
  * Manages compatibility checks, warns or prevents incompatibilities.
  *
- * @param mods In/out set of active mods, modified in place
- * @param baseRuleset The selected base Ruleset //todo clarify
+ * @param mods **Reference**: In/out set of active mods, modified in place: If this needs to change, call [changeGameParameters]
+ * @param initialBaseRuleset The selected base Ruleset, only for running mod checks against. Use [setBaseRuleset] to change on the fly.
  * @param screen Parent screen, used only to show [ToastPopup]s
  * @param isPortrait Used only for minor layout tweaks, arrangement is always vertical
  * @param onUpdate Callback, parameter is the mod name, called after any checks that may prevent mod selection succeed.
  */
 class ModCheckboxTable(
-    private val mods: LinkedHashSet<String>,
-    private var baseRuleset: String,
+    private var mods: LinkedHashSet<String>,
+    initialBaseRuleset: String,
     private val screen: BaseScreen,
     isPortrait: Boolean = false,
-    onUpdate: (String) -> Unit
+    private val onUpdate: (String) -> Unit
 ): Table() {
-    private val modRulesets = RulesetCache.values.filter { it.name != "" && !it.modOptions.isBaseRuleset}
-    private var lastToast: ToastPopup? = null
-    private val extensionRulesetModButtons = ArrayList<CheckBox>()
+    private var baseRulesetName = ""
+    private lateinit var baseRuleset: Ruleset
+
+    private class ModWithCheckBox(val mod: Ruleset, val widget: CheckBox)
+    private val modWidgets = ArrayList<ModWithCheckBox>()
+
+    /** Saved result from any complex mod check unless the causing selection has already been reverted.
+     *  In other words, this can contain the text for an "Error" level check only if the Widget was
+     *  initialized with such an invalid mod combination.
+     *  This Widget reverts User changes that cause an Error severity immediately and this field is nulled.
+     */
+    var savedModcheckResult: String? = null
+
+    private var disableChangeEvents = false
+
+    private val expanderPadTop = if (isPortrait) 0f else 16f
+    private val expanderPadOther = if (isPortrait) 0f else 10f
 
     init {
+        val modRulesets = RulesetCache.values.filter {
+            ModCompatibility.isExtensionMod(it)
+        }
 
         for (mod in modRulesets.sortedBy { it.name }) {
             val checkBox = mod.name.toCheckBox(mod.name in mods)
@@ -44,38 +63,84 @@ class ModCheckboxTable(
                     onUpdate(mod.name)
                 }
             }
-            extensionRulesetModButtons.add(checkBox)
+            checkBox.left()
+            modWidgets += ModWithCheckBox(mod, checkBox)
         }
 
-        val padTop = if (isPortrait) 0f else 16f
-
-        if (extensionRulesetModButtons.any()) {
-            add(ExpanderTab("Extension mods", persistenceID = "NewGameExpansionMods") {
-                it.defaults().pad(5f,0f)
-                for (checkbox in extensionRulesetModButtons) {
-                    checkbox.left()
-                    it.add(checkbox).row()
-                }
-            }).pad(10f).padTop(padTop).growX().row()
-        }
+        setBaseRuleset(initialBaseRuleset)
     }
 
-    fun setBaseRuleset(newBaseRuleset: String) { baseRuleset = newBaseRuleset }
+    fun updateSelection() {
+        savedModcheckResult = null
+        disableChangeEvents = true
+        for (mod in modWidgets) {
+            mod.widget.isChecked = mod.mod.name in mods
+        }
+        disableChangeEvents = false
+        deselectIncompatibleMods(null)
+    }
+
+    fun setBaseRuleset(newBaseRulesetName: String) {
+        val newBaseRuleset = RulesetCache[newBaseRulesetName]
+            // We're calling this from init, baseRuleset is lateinit, and the mod may have been deleted: Must make sure baseRuleset is initialized
+            ?: return setBaseRuleset(BaseRuleset.Civ_V_GnK.fullName)
+        baseRulesetName = newBaseRulesetName
+        baseRuleset = newBaseRuleset
+        savedModcheckResult = null
+        clear()
+        mods.clear()  // We'll regenerate this from checked widgets
+
+        val compatibleMods = modWidgets
+            .filter { ModCompatibility.meetsBaseRequirements(it.mod, baseRuleset) }
+
+        if (compatibleMods.none()) return
+
+        for (mod in compatibleMods) {
+            if (mod.widget.isChecked) mods += mod.mod.name
+        }
+
+        add(ExpanderTab("Extension mods", persistenceID = "NewGameExpansionMods") {
+            it.defaults().pad(5f,0f)
+            for (mod in compatibleMods) {
+                it.add(mod.widget).row()
+            }
+        }).pad(expanderPadOther).padTop(expanderPadTop).growX().row()
+
+        disableIncompatibleMods()
+
+        runComplexModCheck()
+    }
+
     fun disableAllCheckboxes() {
-        for (checkBox in extensionRulesetModButtons) {
-            checkBox.isChecked = false
+        disableChangeEvents = true
+        for (mod in modWidgets) {
+            mod.widget.isChecked = false
         }
+        mods.clear()
+        disableChangeEvents = false
+
+        savedModcheckResult = null
+        disableIncompatibleMods()
+        onUpdate("-")  // should match no mod
     }
 
+    private fun runComplexModCheck(): Boolean {
+        // Disable user input to avoid ANRs
+        val currentInputProcessor = Gdx.input.inputProcessor
+        Gdx.input.inputProcessor = null
 
-    private fun popupToastError(rulesetErrorList: RulesetErrorList) {
-        val initialText =
-            if (rulesetErrorList.isError()) "The mod combination you selected is incorrectly defined!".tr()
-            else "{The mod combination you selected has problems.}\n{You can play it, but don't expect everything to work!}".tr()
-        val toastMessage =  "$initialText\n\n${rulesetErrorList.getErrorText()}"
+        // Check over complete combination of selected mods
+        val complexModLinkCheck = RulesetCache.checkCombinedModLinks(mods, baseRulesetName)
+        if (!complexModLinkCheck.isWarnUser()){
+            savedModcheckResult = null
+            Gdx.input.inputProcessor = currentInputProcessor
+            return false
+        }
+        savedModcheckResult = complexModLinkCheck.getErrorText()
+        complexModLinkCheck.showWarnOrErrorToast(screen)
 
-        lastToast?.close()
-        lastToast = ToastPopup(toastMessage, screen, 5000L)
+        Gdx.input.inputProcessor = currentInputProcessor
+        return complexModLinkCheck.isError()
     }
 
     private fun checkBoxChanged(
@@ -83,14 +148,13 @@ class ModCheckboxTable(
         changeEvent: ChangeListener.ChangeEvent,
         mod: Ruleset
     ): Boolean {
+        if (disableChangeEvents) return false
+
         if (checkBox.isChecked) {
             // First the quick standalone check
-            val modLinkErrors = mod.checkModLinks()
+            val modLinkErrors = mod.getErrorList()
             if (modLinkErrors.isError()) {
-                lastToast?.close()
-                val toastMessage =
-                    "The mod you selected is incorrectly defined!".tr() + "\n\n${modLinkErrors.getErrorText()}"
-                lastToast = ToastPopup(toastMessage, screen, 5000L)
+                modLinkErrors.showWarnOrErrorToast(screen)
                 changeEvent.cancel() // Cancel event to reset to previous state - see Button.setChecked()
                 return false
             }
@@ -98,14 +162,11 @@ class ModCheckboxTable(
             mods.add(mod.name)
 
             // Check over complete combination of selected mods
-            val complexModLinkCheck = RulesetCache.checkCombinedModLinks(mods, baseRuleset)
-            if (complexModLinkCheck.isWarnUser()) {
-                popupToastError(complexModLinkCheck)
-                if (complexModLinkCheck.isError()) {
-                    changeEvent.cancel() // Cancel event to reset to previous state - see Button.setChecked()
-                    mods.remove(mod.name)
-                    return false
-                }
+            if (runComplexModCheck()) {
+                changeEvent.cancel() // Cancel event to reset to previous state - see Button.setChecked()
+                mods.remove(mod.name)
+                savedModcheckResult = null  // we just fixed it
+                return false
             }
 
         } else {
@@ -115,18 +176,54 @@ class ModCheckboxTable(
              */
 
             mods.remove(mod.name)
-            val complexModLinkCheck = RulesetCache.checkCombinedModLinks(mods, baseRuleset)
-            if (complexModLinkCheck.isWarnUser()) {
-                popupToastError(complexModLinkCheck)
-                if (complexModLinkCheck.isError()) {
-                    changeEvent.cancel() // Cancel event to reset to previous state - see Button.setChecked()
-                    mods.add(mod.name)
-                    return false
-                }
+
+            if (runComplexModCheck()) {
+                changeEvent.cancel() // Cancel event to reset to previous state - see Button.setChecked()
+                mods.add(mod.name)
+                savedModcheckResult = null  // we just fixed it
+                return false
             }
 
         }
 
+        disableIncompatibleMods()
+
         return true
+    }
+
+    /** Deselect incompatible mods after [skipCheckBox] was selected.
+     *
+     *  Note: Inactive - we don't even allow a conflict to be turned on using [disableIncompatibleMods].
+     *  But if we want the alternative UX instead - use this in [checkBoxChanged] near `mods.add` and skip disabling...
+     */
+    private fun deselectIncompatibleMods(skipCheckBox: CheckBox?) {
+        disableChangeEvents = true
+        for (modWidget in modWidgets) {
+            if (modWidget.widget == skipCheckBox) continue
+            if (!ModCompatibility.meetsAllRequirements(modWidget.mod, baseRuleset, getSelectedMods())) {
+                modWidget.widget.isChecked = false
+                mods.remove(modWidget.mod.name)
+            }
+        }
+        disableChangeEvents = false
+    }
+
+    /** Disable incompatible mods - those that could not be turned on with the current selection */
+    private fun disableIncompatibleMods() {
+        for (modWidget in modWidgets) {
+            val enable = ModCompatibility.meetsAllRequirements(modWidget.mod, baseRuleset, getSelectedMods())
+            if (!enable && modWidget.widget.isChecked) modWidget.widget.isChecked = false  // mod widgets can't, but selecting a map can cause this situation
+            modWidget.widget.isDisabled = !enable  // isEnabled is only for TextButtons
+        }
+    }
+
+    private fun getSelectedMods() =
+        modWidgets.asSequence()
+             .filter { it.widget.isChecked }
+             .map { it.mod }
+             .asIterable()
+
+    fun changeGameParameters(newGameParameters: GameParameters) {
+        mods = newGameParameters.mods
     }
 }

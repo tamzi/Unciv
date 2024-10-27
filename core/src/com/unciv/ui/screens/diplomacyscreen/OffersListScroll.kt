@@ -5,30 +5,31 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
 import com.unciv.UncivGame
+import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.trade.TradeOffer
 import com.unciv.logic.trade.TradeOffersList
-import com.unciv.logic.trade.TradeType
-import com.unciv.logic.trade.TradeType.Agreement
-import com.unciv.logic.trade.TradeType.City
-import com.unciv.logic.trade.TradeType.Gold
-import com.unciv.logic.trade.TradeType.Gold_Per_Turn
-import com.unciv.logic.trade.TradeType.Introduction
-import com.unciv.logic.trade.TradeType.Luxury_Resource
-import com.unciv.logic.trade.TradeType.Strategic_Resource
-import com.unciv.logic.trade.TradeType.Technology
-import com.unciv.logic.trade.TradeType.Treaty
-import com.unciv.logic.trade.TradeType.WarDeclaration
-import com.unciv.logic.trade.TradeType.values
+import com.unciv.logic.trade.TradeOfferType
+import com.unciv.logic.trade.TradeOfferType.Agreement
+import com.unciv.logic.trade.TradeOfferType.City
+import com.unciv.logic.trade.TradeOfferType.Gold
+import com.unciv.logic.trade.TradeOfferType.Gold_Per_Turn
+import com.unciv.logic.trade.TradeOfferType.Introduction
+import com.unciv.logic.trade.TradeOfferType.Luxury_Resource
+import com.unciv.logic.trade.TradeOfferType.Strategic_Resource
+import com.unciv.logic.trade.TradeOfferType.Technology
+import com.unciv.logic.trade.TradeOfferType.Treaty
+import com.unciv.logic.trade.TradeOfferType.WarDeclaration
+import com.unciv.logic.trade.TradeOfferType.values
 import com.unciv.models.ruleset.tile.ResourceSupplyList
 import com.unciv.models.translations.tr
-import com.unciv.ui.components.ExpanderTab
 import com.unciv.ui.components.extensions.disable
-import com.unciv.ui.components.extensions.onClick
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.components.widgets.ExpanderTab
 import com.unciv.ui.images.IconTextButton
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.screens.basescreen.BaseScreen
 import kotlin.math.min
-import com.unciv.ui.components.AutoScrollPane as ScrollPane
+import com.unciv.ui.components.widgets.AutoScrollPane as ScrollPane
 
 /**
  * Widget for one fourth of an [OfferColumnsTable] - instantiated for ours/theirs × available/traded
@@ -42,7 +43,12 @@ class OffersListScroll(
     val table = Table(BaseScreen.skin).apply { defaults().pad(5f) }
 
 
-    private val expanderTabs = HashMap<TradeType, ExpanderTab>()
+    private val expanderTabs = HashMap<TradeOfferType, ExpanderTab>()
+
+    init {
+        fadeScrollBars=false
+        setScrollbarsVisible(true)
+    }
 
     /**
      * @param offersToDisplay The offers which should be displayed as buttons
@@ -52,13 +58,15 @@ class OffersListScroll(
     fun update(
         offersToDisplay: TradeOffersList,
         otherOffers: TradeOffersList,
-        untradableOffers: ResourceSupplyList = ResourceSupplyList.emptyList
+        untradableOffers: ResourceSupplyList = ResourceSupplyList.emptyList,
+        ourCiv: Civilization,
+        theirCiv: Civilization
     ) {
         table.clear()
         expanderTabs.clear()
 
         for (offerType in values()) {
-            val labelName = when(offerType){
+            val labelName = when(offerType) {
                 Gold, Gold_Per_Turn, Treaty, Agreement, Introduction -> ""
                 Luxury_Resource -> "Luxury resources"
                 Strategic_Resource -> "Strategic resources"
@@ -103,11 +111,16 @@ class OffersListScroll(
                 }
 
                 val amountPerClick =
-                        if (offer.type == Gold) 50
-                        else 1
+                    when (offer.type) {
+                        Gold -> 50
+                        Treaty -> Int.MAX_VALUE
+                        else -> 1
+                    }
 
-                if (offer.isTradable() && offer.name != Constants.peaceTreaty && // can't disable peace treaty!
-                        offer.name != Constants.researchAgreement) {
+                if (offer.isTradable() && offer.name != Constants.peaceTreaty // can't disable peace treaty!
+                    && (offer.name != Constants.researchAgreement // If we have a research agreement make sure the total gold of both Civs is higher than the total cost
+                        // If both civs combined can pay for the research agreement, don't disable it. One can offer the other it's gold.
+                        || (ourCiv.gold + theirCiv.gold > ourCiv.diplomacyFunctions.getResearchAgreementCost(theirCiv) * 2))) {
 
                     // highlight unique suggestions
                     if (offerType in listOf(Luxury_Resource, Strategic_Resource)

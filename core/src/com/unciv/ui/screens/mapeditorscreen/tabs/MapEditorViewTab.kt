@@ -16,19 +16,18 @@ import com.unciv.models.ruleset.nation.Nation
 import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.stats.Stats
 import com.unciv.models.translations.tr
-import com.unciv.ui.components.ExpanderTab
-import com.unciv.ui.components.TabbedPager
-import com.unciv.ui.components.UncivSlider
-import com.unciv.ui.components.WrappableLabel
 import com.unciv.ui.components.extensions.addSeparator
 import com.unciv.ui.components.extensions.darken
-import com.unciv.ui.components.extensions.onClick
 import com.unciv.ui.components.extensions.pad
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.components.widgets.ExpanderTab
+import com.unciv.ui.components.widgets.TabbedPager
+import com.unciv.ui.components.widgets.UncivSlider
+import com.unciv.ui.components.widgets.WrappableLabel
 import com.unciv.ui.popups.ToastPopup
 import com.unciv.ui.screens.basescreen.BaseScreen
-import com.unciv.ui.screens.civilopediascreen.CivilopediaScreen
 import com.unciv.ui.screens.civilopediascreen.FormattedLine
 import com.unciv.ui.screens.civilopediascreen.FormattedLine.IconDisplay
 import com.unciv.ui.screens.civilopediascreen.MarkupRenderer
@@ -95,10 +94,13 @@ class MapEditorViewTab(
 
         val area = tileMap.values.size
         val waterPercent = (tileMap.values.count { it.isWater } * 100f / area).toInt()
+        val impassablePercent = (tileMap.values.count { it.isImpassible() } * 100f / area).toInt()
         val continents = tileMap.continentSizes.size
-        val statsText = "Area: [$area] tiles, [$waterPercent]% water, [$continents] continents/islands"
+        val statsText = "Area: [$area] tiles, [$waterPercent]% water, [$impassablePercent]% impassable, [$continents] continents/islands"
         val statsLabel = WrappableLabel(statsText, labelWidth)
         add(statsLabel.apply { wrap = true }).row()
+
+        add(editorScreen.descriptionTextField).growX().row()
 
         // Map editor must not touch tileMap.naturalWonders as it is a by lazy immutable list,
         // and we wouldn't be able to fix it when the natural wonders change
@@ -106,7 +108,7 @@ class MapEditorViewTab(
             naturalWonders.clear()
             tileMap.values.asSequence()
                 .mapNotNull { it.naturalWonder }
-                .sortedWith(compareBy(collator) { it.tr() })
+                .sortedWith(compareBy(collator) { it.tr(hideIcons = true) })
                 .forEach {
                     naturalWonders.add(it, 1)
                 }
@@ -190,8 +192,7 @@ class MapEditorViewTab(
             lines += FormattedLine(stats.toString())
         }
 
-        val nations = tile.tileMap.getTileStartingLocations(tile)
-            .joinToString { it.name.tr() }
+        val nations = tile.tileMap.getTileStartingLocationSummary(tile)
         if (nations.isNotEmpty()) {
             lines += FormattedLine()
             lines += FormattedLine("Starting location(s): [$nations]")
@@ -214,7 +215,7 @@ class MapEditorViewTab(
                 }
             } else {
                 // This needs CivilopediaScreen to be able to work without a GameInfo!
-                UncivGame.Current.pushScreen(CivilopediaScreen(tile.ruleset, link = it))
+                editorScreen.openCivilopedia(it)
             }
         }
 
@@ -229,7 +230,7 @@ class MapEditorViewTab(
                     editorScreen.updateTile(tile)
                     editorScreen.isDirty = true
                 }
-                slider.setSnapToValues(floatArrayOf(0f,1f,2f,3f,4f,5f,6f,7f,8f,9f,10f,12f,15f,20f,30f,40f), 5f)
+                slider.setSnapToValues(threshold = 5f, 0f,1f,2f,3f,4f,5f,6f,7f,8f,9f,10f,12f,15f,20f,30f,40f)
                 add(slider).right().minWidth(80f).fillX().padTop(15f)
             }).fillX()
         }
@@ -256,15 +257,16 @@ class MapEditorViewTab(
         tileClickHandler(tile)
     }
 
-    private fun TileMap.getTileStartingLocations(tile: Tile?) =
-        startingLocationsByNation.asSequence()
-        .filter { tile == null || tile in it.value }
-        .mapNotNull { ruleset!!.nations[it.key] }
-        .sortedWith(compareBy<Nation>{ it.isCityState }.thenBy(collator) { it.name.tr() })
+    private fun TileMap.getTileStartingLocationSummary(tile: Tile) =
+        startingLocations.asSequence()
+            .filter { it.position == tile.position }
+            .mapNotNull { if (it.nation in ruleset!!.nations) ruleset!!.nations[it.nation]!! to it.usage else null }
+            .sortedWith(compareBy<Pair<Nation,TileMap.StartingLocation.Usage>>{ it.first.isCityState }.thenBy(collator) { it.first.name.tr(hideIcons = true) })
+            .joinToString { "{${it.first.name}} ({${it.second.label}})".tr() }
 
     private fun TileMap.getStartingLocationSummary() =
         startingLocationsByNation.asSequence()
         .mapNotNull { if (it.key in ruleset!!.nations) ruleset!!.nations[it.key]!! to it.value.size else null }
-        .sortedWith(compareBy<Pair<Nation,Int>>{ it.first.isCityState }.thenBy(collator) { it.first.name.tr() })
+        .sortedWith(compareBy<Pair<Nation,Int>>{ it.first.isCityState }.thenBy(collator) { it.first.name.tr(hideIcons = true) })
         .map { it.first.name to it.second }
 }

@@ -9,22 +9,22 @@ import com.badlogic.gdx.utils.Align
 import com.unciv.UncivGame
 import com.unciv.logic.map.MapGeneratedMainType
 import com.unciv.logic.map.MapParameters
-import com.unciv.logic.map.MapResources
+import com.unciv.logic.map.mapgenerator.MapResourceSetting
 import com.unciv.logic.map.MapShape
 import com.unciv.logic.map.MapSize
-import com.unciv.logic.map.MapSizeNew
 import com.unciv.logic.map.MapType
-import com.unciv.logic.map.mapgenerator.MapGenerationRandomness
-import com.unciv.ui.components.ExpanderTab
-import com.unciv.ui.components.UncivSlider
-import com.unciv.ui.components.UncivTextField
-import com.unciv.ui.components.WrappableLabel
-import com.unciv.ui.components.extensions.onChange
-import com.unciv.ui.components.extensions.onClick
+import com.unciv.models.translations.tr
+import com.unciv.ui.components.widgets.UncivTextField
 import com.unciv.ui.components.extensions.pad
 import com.unciv.ui.components.extensions.toCheckBox
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.input.onChange
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.components.widgets.ExpanderTab
+import com.unciv.ui.components.widgets.TranslatedSelectBox
+import com.unciv.ui.components.widgets.UncivSlider
+import com.unciv.ui.components.widgets.WrappableLabel
 import com.unciv.ui.screens.basescreen.BaseScreen
 
 /** Table for editing [mapParameters]
@@ -47,8 +47,6 @@ class MapParametersTable(
     lateinit var customMapWidth: TextField
     lateinit var customMapHeight: TextField
 
-    private val randomness = MapGenerationRandomness()
-
     private lateinit var worldSizeSelectBox: TranslatedSelectBox
     private var customWorldSizeTable = Table ()
     private var hexagonalSizeTable = Table()
@@ -57,6 +55,8 @@ class MapParametersTable(
     private lateinit var noRuinsCheckbox: CheckBox
     private lateinit var noNaturalWondersCheckbox: CheckBox
     private lateinit var worldWrapCheckbox: CheckBox
+    private lateinit var legendaryStartCheckbox: CheckBox
+    private lateinit var strategicBalanceCheckbox: CheckBox
     private lateinit var seedTextField: TextField
 
     private lateinit var mapShapesOptionsValues: HashSet<String>
@@ -70,6 +70,9 @@ class MapParametersTable(
     // overrides nor is a Widget a data class. Seems to work anyway.
     private val advancedSliders = HashMap<UncivSlider, ()->Float>()
 
+    // used only in map editor (forMapEditor == true)
+    var randomizeSeed = true
+
     init {
         update()
     }
@@ -78,11 +81,11 @@ class MapParametersTable(
         clear()
 
         skin = BaseScreen.skin
-        defaults().pad(5f, 10f)
+        defaults().pad(5f, 5f)
         if (mapGeneratedMainType == MapGeneratedMainType.randomGenerated) {
             val prompt = "Which options should be available to the random selection?"
             val width = (previousScreen as? NewGameScreen)?.getColumnWidth() ?: 200f
-            val label = WrappableLabel(prompt, width - 20f)  // 20 is the defaults() padding
+            val label = WrappableLabel(prompt, width - 10f)  // 20 is the defaults() padding
             label.setAlignment(Align.center)
             label.wrap = true
             add(label).colspan(2).grow().row()
@@ -97,7 +100,7 @@ class MapParametersTable(
 
     fun reseed() {
         mapParameters.reseed()
-        seedTextField.text = mapParameters.seed.toString()
+        seedTextField.text = mapParameters.seed.tr()
     }
 
     private fun addMapShapeSelectBox() {
@@ -111,15 +114,15 @@ class MapParametersTable(
             mapShapesOptionsValues = mapShapes.toHashSet()
             val optionsTable = MultiCheckboxTable("{Enabled Map Shapes}", "NewGameMapShapes", mapShapesOptionsValues) {
                 if (mapShapesOptionsValues.isEmpty()) {
-                    mapParameters.shape = mapShapes.random(randomness.RNG)
+                    mapParameters.shape = mapShapes.random()
                 } else {
-                    mapParameters.shape = mapShapesOptionsValues.random(randomness.RNG)
+                    mapParameters.shape = mapShapesOptionsValues.random()
                 }
             }
             add(optionsTable).colspan(2).grow().row()
         } else {
             val mapShapeSelectBox =
-                    TranslatedSelectBox(mapShapes, mapParameters.shape, skin)
+                    TranslatedSelectBox(mapShapes, mapParameters.shape)
             mapShapeSelectBox.onChange {
                 mapParameters.shape = mapShapeSelectBox.selected.value
                 updateWorldSizeTable()
@@ -141,6 +144,9 @@ class MapParametersTable(
             MapType.archipelago,
             MapType.innerSea,
             MapType.perlin,
+            MapType.fractal,
+            MapType.lakes,
+            MapType.smallContinents,
             if (forMapEditor && mapGeneratedMainType != MapGeneratedMainType.randomGenerated) MapType.empty else null
         )
 
@@ -148,14 +154,14 @@ class MapParametersTable(
             mapTypesOptionsValues = mapTypes.toHashSet()
             val optionsTable = MultiCheckboxTable("{Enabled Map Generation Types}", "NewGameMapGenerationTypes", mapTypesOptionsValues) {
                 if (mapTypesOptionsValues.isEmpty()) {
-                    mapParameters.type = mapTypes.random(randomness.RNG)
+                    mapParameters.type = mapTypes.random()
                 } else {
-                    mapParameters.type = mapTypesOptionsValues.random(randomness.RNG)
+                    mapParameters.type = mapTypesOptionsValues.random()
                 }
             }
             add(optionsTable).colspan(2).grow().row()
         } else {
-            mapTypeSelectBox = TranslatedSelectBox(mapTypes, mapParameters.type, skin)
+            mapTypeSelectBox = TranslatedSelectBox(mapTypes, mapParameters.type)
 
             mapTypeSelectBox.onChange {
                 mapParameters.type = mapTypeSelectBox.selected.value
@@ -172,19 +178,19 @@ class MapParametersTable(
 
     private fun addWorldSizeTable() {
         if (mapGeneratedMainType == MapGeneratedMainType.randomGenerated) {
-            val mapSizes = MapSize.values().map { it.name }
+            val mapSizes = MapSize.names()
             mapSizesOptionsValues = mapSizes.toHashSet()
             val optionsTable = MultiCheckboxTable("{Enabled World Sizes}", "NewGameWorldSizes", mapSizesOptionsValues) {
                 if (mapSizesOptionsValues.isEmpty()) {
-                    mapParameters.mapSize = MapSizeNew(mapSizes.random(randomness.RNG))
+                    mapParameters.mapSize = MapSize(mapSizes.random())
                 } else {
-                    mapParameters.mapSize = MapSizeNew(mapSizesOptionsValues.random(randomness.RNG))
+                    mapParameters.mapSize = MapSize(mapSizesOptionsValues.random())
                 }
             }
             add(optionsTable).colspan(2).grow().row()
         } else {
-            val mapSizes = MapSize.values().map { it.name } + listOf(MapSize.custom)
-            worldSizeSelectBox = TranslatedSelectBox(mapSizes, mapParameters.mapSize.name, skin)
+            val mapSizes = MapSize.names() + listOf(MapSize.custom)
+            worldSizeSelectBox = TranslatedSelectBox(mapSizes, mapParameters.mapSize.name)
             worldSizeSelectBox.onChange { updateWorldSizeTable() }
 
             addHexagonalSizeTable()
@@ -199,12 +205,12 @@ class MapParametersTable(
     }
 
     private fun addHexagonalSizeTable() {
-        val defaultRadius = mapParameters.mapSize.radius.toString()
-        customMapSizeRadius = UncivTextField.create("Radius", defaultRadius).apply {
+        val defaultRadius = mapParameters.mapSize.radius.tr()
+        customMapSizeRadius = UncivTextField("Radius", defaultRadius).apply {
             textFieldFilter = DigitsOnlyFilter()
         }
         customMapSizeRadius.onChange {
-            mapParameters.mapSize = MapSizeNew(customMapSizeRadius.text.toIntOrNull() ?: 0 )
+            mapParameters.mapSize = MapSize(customMapSizeRadius.text.toIntOrNull() ?: 0 )
         }
         hexagonalSizeTable.add("{Radius}:".toLabel()).grow().left()
         hexagonalSizeTable.add(customMapSizeRadius).right().row()
@@ -213,21 +219,21 @@ class MapParametersTable(
     }
 
     private fun addRectangularSizeTable() {
-        val defaultWidth = mapParameters.mapSize.width.toString()
-        customMapWidth = UncivTextField.create("Width", defaultWidth).apply {
+        val defaultWidth = mapParameters.mapSize.width.tr()
+        customMapWidth = UncivTextField("Width", defaultWidth).apply {
             textFieldFilter = DigitsOnlyFilter()
         }
 
-        val defaultHeight = mapParameters.mapSize.height.toString()
-        customMapHeight = UncivTextField.create("Height", defaultHeight).apply {
+        val defaultHeight = mapParameters.mapSize.height.tr()
+        customMapHeight = UncivTextField("Height", defaultHeight).apply {
             textFieldFilter = DigitsOnlyFilter()
         }
 
         customMapWidth.onChange {
-            mapParameters.mapSize = MapSizeNew(customMapWidth.text.toIntOrNull() ?: 0, customMapHeight.text.toIntOrNull() ?: 0)
+            mapParameters.mapSize = MapSize(customMapWidth.text.toIntOrNull() ?: 0, customMapHeight.text.toIntOrNull() ?: 0)
         }
         customMapHeight.onChange {
-            mapParameters.mapSize = MapSizeNew(customMapWidth.text.toIntOrNull() ?: 0, customMapHeight.text.toIntOrNull() ?: 0)
+            mapParameters.mapSize = MapSize(customMapWidth.text.toIntOrNull() ?: 0, customMapHeight.text.toIntOrNull() ?: 0)
         }
 
         rectangularSizeTable.defaults().pad(5f)
@@ -247,36 +253,26 @@ class MapParametersTable(
         else if (mapParameters.shape == MapShape.rectangular && worldSizeSelectBox.selected.value == MapSize.custom)
             customWorldSizeTable.add(rectangularSizeTable).grow().row()
         else
-            mapParameters.mapSize = MapSizeNew(worldSizeSelectBox.selected.value)
+            mapParameters.mapSize = MapSize(worldSizeSelectBox.selected.value)
 
         sizeChangedCallback?.invoke()
     }
 
     private fun addResourceSelectBox() {
-        val mapResources = if (forMapEditor) listOf(
-            MapResources.sparse,
-            MapResources.default,
-            MapResources.abundant,
-        ) else listOf(
-            MapResources.sparse,
-            MapResources.default,
-            MapResources.abundant,
-            MapResources.strategicBalance,
-            MapResources.legendaryStart
-        )
+        val mapResources = MapResourceSetting.activeLabels()
 
         if (mapGeneratedMainType == MapGeneratedMainType.randomGenerated) {
             mapResourcesOptionsValues = mapResources.toHashSet()
             val optionsTable = MultiCheckboxTable("{Enabled Resource Settings}", "NewGameResourceSettings", mapResourcesOptionsValues) {
                 if (mapResourcesOptionsValues.isEmpty()) {
-                    mapParameters.mapResources = mapResources.random(randomness.RNG)
+                    mapParameters.mapResources = mapResources.random()
                 } else {
-                    mapParameters.mapResources = mapResourcesOptionsValues.random(randomness.RNG)
+                    mapParameters.mapResources = mapResourcesOptionsValues.random()
                 }
             }
             add(optionsTable).colspan(2).grow().row()
         } else {
-            resourceSelectBox = TranslatedSelectBox(mapResources, mapParameters.mapResources, skin)
+            resourceSelectBox = TranslatedSelectBox(mapResources, mapParameters.mapResources)
 
             resourceSelectBox.onChange {
                 mapParameters.mapResources = resourceSelectBox.selected.value
@@ -316,11 +312,27 @@ class MapParametersTable(
         add(worldWrapCheckbox).row()
     }
 
+    private fun Table.addStrategicBalanceCheckbox() {
+        strategicBalanceCheckbox = "Strategic Balance".toCheckBox(mapParameters.strategicBalance) {
+            mapParameters.strategicBalance = it
+        }
+        add(strategicBalanceCheckbox).row()
+    }
+
+    private fun Table.addLegendaryStartCheckbox() {
+        legendaryStartCheckbox = "Legendary Start".toCheckBox(mapParameters.legendaryStart) {
+            mapParameters.legendaryStart = it
+        }
+        add(legendaryStartCheckbox).row()
+    }
+
     private fun addWrappedCheckBoxes() {
         val worldWrapWarning = "World wrap maps are very memory intensive - creating large world wrap maps on Android can lead to crashes!"
         if (mapGeneratedMainType == MapGeneratedMainType.randomGenerated) {
             add(ExpanderTab("{Other Settings}", persistenceID = "NewGameOtherSettings", startsOutOpened = false) {
                 it.defaults().pad(5f,0f)
+                it.addStrategicBalanceCheckbox()
+                it.addLegendaryStartCheckbox()
                 it.addNoRuinsCheckbox()
                 it.addNoNaturalWondersCheckbox()
                 it.addWorldWrapCheckbox()
@@ -329,6 +341,8 @@ class MapParametersTable(
         } else {
             add(Table(skin).apply {
                 defaults().left().pad(2.5f)
+                addStrategicBalanceCheckbox()
+                addLegendaryStartCheckbox()
                 addNoRuinsCheckbox()
                 addNoNaturalWondersCheckbox()
                 addWorldWrapCheckbox()
@@ -347,7 +361,7 @@ class MapParametersTable(
     private fun addAdvancedControls(table: Table) {
         table.defaults().pad(5f)
 
-        seedTextField = UncivTextField.create("RNG Seed", mapParameters.seed.toString())
+        seedTextField = UncivTextField("RNG Seed", mapParameters.seed.tr())
         seedTextField.textFieldFilter = DigitsOnlyFilter()
 
         // If the field is empty, fallback seed value to 0
@@ -385,6 +399,17 @@ class MapParametersTable(
                 table.add(button).colspan(2).padTop(10f).row()
         }
 
+        fun addCheckBox(text: String, initialState: Boolean, action: ((Boolean) -> Unit)) {
+            val checkbox = text.toCheckBox(initialState){
+                action(it)
+            }
+            table.add(checkbox).colspan(2).row()
+        }
+        if (forMapEditor) {
+            addCheckBox("Randomize seed", true) {
+                randomizeSeed = it
+            }
+        }
         addSlider("Map Elevation", {mapParameters.elevationExponent}, 0.6f, 0.8f)
         { mapParameters.elevationExponent = it }
 
@@ -405,7 +430,7 @@ class MapParametersTable(
         addSlider("Rare features richness", {mapParameters.rareFeaturesRichness}, 0f, 0.5f)
         { mapParameters.rareFeaturesRichness = it }
 
-        addSlider("Max Coast extension", {mapParameters.maxCoastExtension.toFloat()}, 0f, 5f)
+        addSlider("Max Coast extension", {mapParameters.maxCoastExtension.toFloat()}, 1f, 5f)
         { mapParameters.maxCoastExtension = it.toInt() }.apply { stepSize = 1f }
 
         addSlider("Biome areas extension", {mapParameters.tilesPerBiomeArea.toFloat()}, 1f, 15f)
@@ -416,7 +441,7 @@ class MapParametersTable(
 
         addTextButton("Reset to defaults", true) {
             mapParameters.resetAdvancedSettings()
-            seedTextField.text = mapParameters.seed.toString()
+            seedTextField.text = mapParameters.seed.tr()
             for (entry in advancedSliders)
                 entry.key.value = entry.value()
         }

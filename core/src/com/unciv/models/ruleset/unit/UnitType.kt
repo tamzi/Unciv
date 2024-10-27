@@ -6,12 +6,6 @@ import com.unciv.models.ruleset.unique.UniqueTarget
 import com.unciv.ui.objectdescriptions.BaseUnitDescriptions.getUnitTypeCivilopediaTextLines
 
 
-enum class UnitLayer { // The layer in which the unit moves
-    Civilian,
-    Military,
-    Air
-}
-
 enum class UnitMovementType { // The types of tiles the unit can by default enter
     Land, // Only land tiles except when certain techs are researched
     Water, // Only water tiles
@@ -42,9 +36,7 @@ class UnitType() : RulesetObject() {
             "Land" -> isLandUnit()
             "Water" -> isWaterUnit()
             "Air" -> isAirUnit()
-            else -> {
-                uniques.contains(filter)
-            }
+            else -> uniqueMap.hasTagUnique(filter)
         }
     }
 
@@ -59,7 +51,7 @@ class UnitType() : RulesetObject() {
         val City = UnitType("City", "Land")
 
         fun getCivilopediaIterator(ruleset: Ruleset): Collection<UnitType> {
-            return UnitMovementType.values().map {
+            return UnitMovementType.entries.map {
                 // Create virtual UnitTypes to describe the movement domains - Civilopedia only.
                 // It is important that the name includes the [] _everywhere_
                 // (here, CivilopediaImageGetters, links, etc.) so translation comes as cheap as possible.

@@ -8,18 +8,18 @@ import com.unciv.logic.multiplayer.FriendList
 import com.unciv.models.translations.tr
 import com.unciv.ui.screens.pickerscreens.PickerScreen
 import com.unciv.ui.popups.ToastPopup
-import com.unciv.ui.components.UncivTextField
+import com.unciv.ui.components.widgets.UncivTextField
 import com.unciv.ui.components.extensions.enable
-import com.unciv.ui.components.extensions.onClick
+import com.unciv.ui.components.input.onClick
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
 import java.util.UUID
 
 class AddFriendScreen : PickerScreen() {
     init {
-        val friendNameTextField = UncivTextField.create("Please input a name for your friend!")
+        val friendNameTextField = UncivTextField("Please input a name for your friend!")
         val pastePlayerIDButton = "Paste player ID from clipboard".toTextButton()
-        val playerIDTextField = UncivTextField.create("Please input a player ID for your friend!")
+        val playerIDTextField = UncivTextField("Please input a player ID for your friend!")
         val friendlist = FriendList()
 
         topTable.add("Friend name".toLabel()).row()
