@@ -10,6 +10,7 @@ import com.unciv.models.ruleset.tile.TileImprovement
 import com.unciv.models.ruleset.unique.StateForConditionals
 import com.unciv.models.ruleset.unique.UniqueTriggerActivation
 import com.unciv.models.ruleset.unique.UniqueType
+import com.unciv.models.stats.Stats
 
 
 /** Reason why an Improvement cannot be built by a given civ */
@@ -78,7 +79,8 @@ class TileImprovementFunctions(val tile: Tile) {
             yield(ImprovementBuildingProblem.MissingResources)
 
         if (improvement.getMatchingUniques(UniqueType.CostsResources)
-                    .any { civInfo.getResourceAmount(it.params[1]) < it.params[0].toInt() })
+                    .any { civInfo.getResourceAmount(it.params[1]) < it.params[0].toInt() * 
+                            (if (it.isModifiedByGameSpeed()) civInfo.gameInfo.speed.modifier else 1f) })
             yield(ImprovementBuildingProblem.MissingResources)
 
         val knownFeatureRemovals = tile.ruleset.nonRoadTileRemovals
@@ -117,7 +119,7 @@ class TileImprovementFunctions(val tile: Tile) {
                 tile.ruleset.tileRemovals.firstOrNull { it.name == Constants.remove + feature } }
             if (featureRemovals.isEmpty()) return false
             if (featureRemovals.any { it !in knownFeatureRemovals }) return false
-            val clonedTile = tile.clone()
+            val clonedTile = tile.clone(addUnits = false)
             clonedTile.setTerrainFeatures(tile.terrainFeatures.filterNot {
                 feature -> featureRemovals.any { it.name.removePrefix(Constants.remove) == feature } })
             return clonedTile.improvementFunctions.canImprovementBeBuiltHere(improvement, resourceIsVisible, knownFeatureRemovals, stateForConditionals)
@@ -149,9 +151,10 @@ class TileImprovementFunctions(val tile: Tile) {
             tile.lastTerrain.unbuildable && !improvement.canBeBuiltOnThisUnbuildableTerrain(knownFeatureRemovals) -> false
 
             // Can't build if any terrain specifically prevents building this improvement
-            tile.getTerrainMatchingUniques(UniqueType.RestrictedBuildableImprovements, stateForConditionals).any {
-                    unique -> !improvement.matchesFilter(unique.params[0])
-            } -> false
+            tile.getTerrainMatchingUniques(UniqueType.RestrictedBuildableImprovements, stateForConditionals).toList()
+                .let { it.any() && it.none {
+                        unique -> improvement.matchesFilter(unique.params[0], StateForConditionals(tile = tile))
+                } } -> false
 
             // Can't build if the improvement specifically prevents building on some present feature
             improvement.getMatchingUniques(UniqueType.CannotBuildOnTile, stateForConditionals).any {
@@ -203,8 +206,8 @@ class TileImprovementFunctions(val tile: Tile) {
             improvementName?.startsWith(Constants.remove) == true -> {
                 activateRemovalImprovement(improvementName, civToActivateBroaderEffects)
             }
-            improvementName == RoadStatus.Road.name -> tile.addRoad(RoadStatus.Road, civToActivateBroaderEffects)
-            improvementName == RoadStatus.Railroad.name -> tile.addRoad(RoadStatus.Railroad, civToActivateBroaderEffects)
+            improvementName == RoadStatus.Road.name -> tile.setRoadStatus(RoadStatus.Road, civToActivateBroaderEffects)
+            improvementName == RoadStatus.Railroad.name -> tile.setRoadStatus(RoadStatus.Railroad, civToActivateBroaderEffects)
             improvementName == Constants.repair -> tile.setRepaired()
             else -> {
                 tile.improvementIsPillaged = false
@@ -254,18 +257,25 @@ class TileImprovementFunctions(val tile: Tile) {
         unit: MapUnit? = null
     ) {
         val stateForConditionals = StateForConditionals(civ, unit = unit, tile = tile)
+        
+        for (unique in improvement.getMatchingUniques(UniqueType.CostsResources, stateForConditionals)) {
+            val resource = tile.ruleset.tileResources[unique.params[1]] ?: continue
+            var amount = unique.params[0].toInt()
+            if (unique.isModifiedByGameSpeed()) amount = (amount * civ.gameInfo.speed.modifier).toInt()
+            civ.gainStockpiledResource(resource, -amount)
+        }
 
         for (unique in improvement.uniqueObjects.filter { !it.hasTriggerConditional()
             && it.conditionalsApply(stateForConditionals) })
             UniqueTriggerActivation.triggerUnique(unique, civ, unit = unit, tile = tile)
 
         for (unique in civ.getTriggeredUniques(UniqueType.TriggerUponBuildingImprovement, stateForConditionals)
-            .filter { improvement.matchesFilter(it.params[0]) })
+            { improvement.matchesFilter(it.params[0], stateForConditionals) })
             UniqueTriggerActivation.triggerUnique(unique, civ, unit = unit, tile = tile)
 
         if (unit == null) return
         for (unique in unit.getTriggeredUniques(UniqueType.TriggerUponBuildingImprovement, stateForConditionals)
-            .filter { improvement.matchesFilter(it.params[0]) })
+            { improvement.matchesFilter(it.params[0], stateForConditionals) })
             UniqueTriggerActivation.triggerUnique(unique, civ, unit = unit, tile = tile)
     }
 
@@ -303,19 +313,25 @@ class TileImprovementFunctions(val tile: Tile) {
         val closestCity = civ.cities.minByOrNull { it.getCenterTile().aerialDistanceTo(tile) }
             ?: return
         val distance = closestCity.getCenterTile().aerialDistanceTo(tile)
-        var productionPointsToAdd = if (distance == 1) 20 else 20 - (distance - 2) * 5
-        if (tile.owningCity == null || tile.owningCity!!.civ != civ) productionPointsToAdd =
-            productionPointsToAdd * 2 / 3
-        if (productionPointsToAdd > 0) {
-            closestCity.cityConstructions.addProductionPoints(productionPointsToAdd)
+        if (distance > 5) return
+        var stats = Stats()
+        for (unique in tile.getTerrainMatchingUniques(UniqueType.ProductionBonusWhenRemoved)) {
+            if (unique.isModifiedByGameSpeed())
+                stats.add(unique.stats * civ.gameInfo.speed.modifier)
+            else stats.add(unique.stats)
+        }
+        if (stats.isEmpty()) return
+        if (distance != 1) stats *= (6 - distance) / 4f
+        if (tile.owningCity == null || tile.owningCity!!.civ != civ) stats *= 2 / 3f
+        for ((stat, value) in stats) {
+            closestCity.addStat(stat, value.toInt())
             val locations = LocationAction(tile.position, closestCity.location)
             civ.addNotification(
-                "Clearing a [$removedTerrainFeature] has created [$productionPointsToAdd] Production for [${closestCity.name}]",
+                "Clearing a [$removedTerrainFeature] has created [${stats.toStringForNotifications()}] for [${closestCity.name}]",
                 locations, NotificationCategory.Production, NotificationIcon.Construction
             )
         }
     }
-
 
     /** Marks tile as target tile for a building with a [UniqueType.CreatesOneImprovement] unique */
     fun markForCreatesOneImprovement(improvement: String) {

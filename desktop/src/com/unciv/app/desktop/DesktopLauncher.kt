@@ -4,6 +4,7 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
 import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.graphics.glutils.HdpiMode
 import com.badlogic.gdx.utils.SharedLibraryLoader
+import com.unciv.UncivGame
 import com.unciv.app.desktop.DesktopScreenMode.Companion.getMaximumWindowBounds
 import com.unciv.json.json
 import com.unciv.logic.files.SETTINGS_FILE_NAME
@@ -20,16 +21,19 @@ import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.utils.Display
 import com.unciv.utils.Log
 import org.lwjgl.system.Configuration
+import java.awt.GraphicsEnvironment
+import java.awt.Image
+import java.awt.Taskbar
+import java.awt.Toolkit
 import java.io.File
+import java.net.URL
 import kotlin.system.exitProcess
+
 
 internal object DesktopLauncher {
 
     @JvmStatic
     fun main(arg: Array<String>) {
-        if (SharedLibraryLoader.isMac) {
-            Configuration.GLFW_LIBRARY_NAME.set("glfw_async")
-        }
 
         // The uniques checker requires the file system to be seet up, which happens after lwjgw initializes it
         if (arg.isNotEmpty() && arg[0] == "mod-ci") {
@@ -48,6 +52,18 @@ internal object DesktopLauncher {
             println(errors.getErrorText(true))
             exitProcess(if (errors.any { it.errorSeverityToReport == RulesetErrorSeverity.Error }) 1 else 0)
         }
+        
+        if (arg.isNotEmpty() && arg[0] == "--version") {
+            println(UncivGame.VERSION.text)
+            exitProcess(0)
+        }
+        
+        if (SharedLibraryLoader.isMac) {
+            Configuration.GLFW_LIBRARY_NAME.set("glfw_async")
+            // Since LibGDX 1.13.1 on Mac you cannot call Lwjgl3ApplicationConfiguration.getPrimaryMonitor()
+            //  before GraphicsEnvironment.getLocalGraphicsEnvironment().
+            GraphicsEnvironment.getLocalGraphicsEnvironment()
+        }
 
         val customDataDirPrefix="--data-dir="
         val customDataDir = arg.find { it.startsWith(customDataDirPrefix) }?.removePrefix(customDataDirPrefix)
@@ -62,33 +78,36 @@ internal object DesktopLauncher {
         Fonts.fontImplementation = DesktopFont()
 
         // Setup Desktop saver-loader
-        UncivFiles.saverLoader = DesktopSaverLoader()
+        UncivFiles.saverLoader = if (LinuxX11SaverLoader.isRequired()) LinuxX11SaverLoader() else DesktopSaverLoader()
         UncivFiles.preferExternalStorage = false
 
         // Solves a rendering problem in specific GPUs and drivers.
         // For more info see https://github.com/yairm210/Unciv/pull/3202 and https://github.com/LWJGL/lwjgl/issues/119
         System.setProperty("org.lwjgl.opengl.Display.allowSoftwareOpenGL", "true")
+        
+        val dataDirectory = customDataDir ?: "."
 
         val isRunFromJAR = DesktopLauncher.javaClass.`package`.specificationVersion != null
-        ImagePacker.packImages(isRunFromJAR)
+        ImagePacker.packImages(isRunFromJAR, dataDirectory)
 
         val config = Lwjgl3ApplicationConfiguration()
-        config.setWindowIcon("ExtraImages/Icon.png")
+        config.setWindowIcon("ExtraImages/Icons/Unciv32.png", "ExtraImages/Icons/Unciv128.png")
+        if (SharedLibraryLoader.isMac) updateDockIconForMacOs("ExtraImages/Icons/Unciv128.png")
         config.setTitle("Unciv")
         config.setHdpiMode(HdpiMode.Logical)
         config.setWindowSizeLimits(WindowState.minimumWidth, WindowState.minimumHeight, -1, -1)
 
+        
         // LibGDX not yet configured, use regular java class
         val maximumWindowBounds = getMaximumWindowBounds()
 
-        val settingsDirectory = customDataDir ?: "."
 
-        val settings = UncivFiles.getSettingsForPlatformLaunchers(settingsDirectory)
+        val settings = UncivFiles.getSettingsForPlatformLaunchers(dataDirectory)
         if (settings.isFreshlyCreated) {
             settings.screenSize = ScreenSize.Large // By default we guess that Desktops have larger screens
             settings.windowState = WindowState(maximumWindowBounds)
 
-            FileHandle(settingsDirectory + File.separator + SETTINGS_FILE_NAME).writeString(json().toJson(settings), false, Charsets.UTF_8.name()) // so when we later open the game we get fullscreen
+            FileHandle(dataDirectory + File.separator + SETTINGS_FILE_NAME).writeString(json().toJson(settings), false, Charsets.UTF_8.name()) // so when we later open the game we get fullscreen
         }
         // Kludge! This is a workaround - the matching call in DesktopDisplay doesn't "take" quite permanently,
         // the window might revert to the "config" values when the user moves the window - worse if they
@@ -108,5 +127,15 @@ internal object DesktopLauncher {
         // HardenGdxAudio extends Lwjgl3Application, and the Lwjgl3Application constructor runs as long as the game runs
         HardenGdxAudio(DesktopGame(config, customDataDir), config)
         exitProcess(0)
+    }
+
+    private fun updateDockIconForMacOs(fileName: String) {
+        try {
+            val defaultToolkit: Toolkit = Toolkit.getDefaultToolkit()
+            val imageResource: URL = FileHandle(fileName).file().toURI().toURL()
+            val image: Image = defaultToolkit.getImage(imageResource)
+            val taskbar = Taskbar.getTaskbar()
+            taskbar.iconImage = image
+        } catch (_: Throwable) { }
     }
 }

@@ -1,7 +1,6 @@
 package com.unciv.logic.map.mapunit
 
 import com.unciv.models.ruleset.RejectionReasonType
-import com.unciv.models.ruleset.unique.StateForConditionals
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.ui.components.extensions.toPercent
@@ -56,7 +55,7 @@ class UnitUpgradeManager(val unit: MapUnit) {
         // the UniqueType being allowed on a BaseUnit - we don't have a MapUnit in the loop.
         // Actually instantiating every intermediate to support such mods: todo
         var civModifier = 1f
-        val stateForConditionals = StateForConditionals(unit.civ, unit = unit)
+        val stateForConditionals = unit.cache.state
         for (unique in unit.civ.getMatchingUniques(UniqueType.UnitUpgradeCost, stateForConditionals))
             civModifier *= unique.params[0].toPercent()
 
@@ -84,6 +83,11 @@ class UnitUpgradeManager(val unit: MapUnit) {
      *  but then the lambda in UnitActionsUpgrade will complain and need to be forced back to Unit type.
      */
     fun performUpgrade(upgradedUnit: BaseUnit, isFree: Boolean, goldCostOfUpgrade: Int? = null) {
+        // When mashing the upgrade button, you can 'queue' 2 upgrade actions
+        //  If both are performed, what you get is the unit is doubled
+        //  This prevents this, since we lack another way to do so -_-'  
+        if (unit.isDestroyed) return  
+            
         unit.destroy(destroyTransportedUnit = false)
         val civ = unit.civ
         val position = unit.currentTile.position
@@ -104,6 +108,9 @@ class UnitUpgradeManager(val unit: MapUnit) {
         newUnit.currentMovement = 0f
         // wake up if lost ability to fortify
         if (newUnit.isFortified() && !newUnit.canFortify(ignoreAlreadyFortified = true))
+            newUnit.action = null
+        // wake up from Guarding if can't Withdraw
+        if (newUnit.isGuarding() && !newUnit.hasUnique(UniqueType.WithdrawsBeforeMeleeCombat))
             newUnit.action = null
     }
 }

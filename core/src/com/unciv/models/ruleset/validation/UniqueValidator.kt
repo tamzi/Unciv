@@ -170,12 +170,26 @@ class UniqueValidator(val ruleset: Ruleset) {
             )
 
         if (unique.type in resourceUniques && conditional.type in resourceConditionals
-            && ruleset.tileResources[conditional.params.last()]?.hasUnique(UniqueType.CityResource) == true)
+            && ruleset.tileResources[conditional.params.last()]?.isCityWide == true)
             rulesetErrors.add(
                 "$prefix contains the conditional \"${conditional.text}\"," +
                     " which references a citywide resource. This is not a valid conditional for a resource uniques, " +
                     "as it causes a recursive evaluation loop.",
                 RulesetErrorSeverity.Error, uniqueContainer, unique)
+        
+        // Find resource uniques with countable parameters in conditionals, that depend on citywide resources
+        // This too leads to an endless loop
+        if (unique.type in resourceUniques)
+            for ((index, param) in conditional.params.withIndex()){
+                if (ruleset.tileResources[param]?.isCityWide != true) continue
+                if (unique.type!!.parameterTypeMap.getOrNull(index)?.contains(UniqueParameterType.Countable) != true) continue
+                
+                rulesetErrors.add(
+                    "$prefix contains the modifier \"${conditional.text}\"," +
+                        " which references a citywide resource as a countable." +
+                        " This is not a valid conditional for a resource uniques, as it causes a recursive evaluation loop.",
+                    RulesetErrorSeverity.Error, uniqueContainer, unique)
+            }
 
         val conditionalComplianceErrors =
             getComplianceErrors(conditional)

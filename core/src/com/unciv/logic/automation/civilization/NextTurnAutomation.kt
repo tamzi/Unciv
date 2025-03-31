@@ -24,7 +24,6 @@ import com.unciv.models.ruleset.Victory
 import com.unciv.models.ruleset.nation.PersonalityValue
 import com.unciv.models.ruleset.tech.Technology
 import com.unciv.models.ruleset.tile.ResourceType
-import com.unciv.models.ruleset.unique.StateForConditionals
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.models.stats.Stat
@@ -183,11 +182,12 @@ object NextTurnAutomation {
         if (civInfo.wantsToFocusOn(Victory.Focus.CityStates)) {
             value += 5  // Generally be friendly
         }
-        if (civInfo.getHappiness() < 5 && cityState.cityStateFunctions.canProvideStat(Stat.Happiness)) {
-            value += 10 - civInfo.getHappiness()
+        if (cityState.cityStateFunctions.canProvideStat(Stat.Happiness)) {
+            if (civInfo.getHappiness() < 10)
+                value += 10 - civInfo.getHappiness()
             value += civPersonality[PersonalityValue.Happiness].toInt() - 5
         }
-        if (civInfo.getHappiness() > 5 && cityState.cityStateFunctions.canProvideStat(Stat.Food)) {
+        if (cityState.cityStateFunctions.canProvideStat(Stat.Food)) {
             value += 5
             value += civPersonality[PersonalityValue.Food].toInt() - 5
         }
@@ -199,9 +199,9 @@ object NextTurnAutomation {
         val ourInfluence = if (civInfo.knows(cityState))
             cityState.getDiplomacyManager(civInfo)!!.getInfluence().toInt()
         else 0
-        value += ourInfluence / 10
+        value += minOf(10, ourInfluence / 10) // don't let this spiral out of control
 
-        if (civInfo.gold < 100 && ourInfluence < 30) {
+        if (ourInfluence < 30) {
             // Consider bullying for cash
             value -= 5
         }
@@ -228,13 +228,9 @@ object NextTurnAutomation {
 
     private fun protectCityStates(civInfo: Civilization) {
         for (state in civInfo.getKnownCivs().filter { !it.isDefeated() && it.isCityState }) {
-            val diplomacyManager = state.getDiplomacyManager(civInfo.civName)!!
-            val isAtLeastFriend = diplomacyManager.isRelationshipLevelGE(RelationshipLevel.Friend)
-            if (isAtLeastFriend && state.cityStateFunctions.otherCivCanPledgeProtection(civInfo)) {
-                state.cityStateFunctions.addProtectorCiv(civInfo)
-            } else if (!isAtLeastFriend && state.cityStateFunctions.otherCivCanWithdrawProtection(civInfo)) {
-                state.cityStateFunctions.removeProtectorCiv(civInfo)
-            }
+            if (state.cityStateFunctions.otherCivCanPledgeProtection(civInfo))
+                state.cityStateFunctions.addProtectorCiv(civInfo) 
+            //Always pledge to protect, as it makes it harder for others to demand tribute, and grants +10 resting Influence
         }
     }
 
@@ -262,12 +258,15 @@ object NextTurnAutomation {
             return researchableTechs.toSortedMap().values.toList()
         }
 
-        val stateForConditionals = StateForConditionals(civInfo)
-        while(civInfo.tech.freeTechs > 0) {
+        val stateForConditionals = civInfo.state
+        while (civInfo.tech.freeTechs > 0) {
             val costs = getGroupedResearchableTechs()
             if (costs.isEmpty()) return
-
-            val mostExpensiveTechs = costs[costs.size - 1]
+            
+            val mostExpensiveTechs = costs.lastOrNull{ 
+                // Ignore rows where all techs have 0 weight
+                it.any { it.getWeightForAiDecision(stateForConditionals) > 0 }
+            } ?: costs.last()
             val chosenTech = mostExpensiveTechs.randomWeighted { it.getWeightForAiDecision(stateForConditionals) }
             civInfo.tech.getFreeTechnology(chosenTech.name)
         }
@@ -275,7 +274,9 @@ object NextTurnAutomation {
             val costs = getGroupedResearchableTechs()
             if (costs.isEmpty()) return
 
-            val cheapestTechs = costs[0]
+            val cheapestTechs = costs.firstOrNull{
+                // Ignore rows where all techs have 0 weight
+                it.any { it.getWeightForAiDecision(stateForConditionals) > 0 } }?: costs.first()
             //Do not consider advanced techs if only one tech left in cheapest group
             val techToResearch: Technology =
                 if (cheapestTechs.size == 1 || costs.size == 1) {
@@ -327,31 +328,27 @@ object NextTurnAutomation {
                 // If incomplete branches have higher priorities than any newly adoptable branch,
                 if (maxAdoptablePriority <= maxIncompletePriority) {
                     // Prioritize finishing one of the unfinished branches
-                    incompleteBranches.filter {
-                        priorityMap[it] == maxIncompletePriority
-                    }.toSet()
+                    incompleteBranches.filter { priorityMap[it] == maxIncompletePriority }.toSet()
                 }
                 // If newly adoptable branches have higher priorities than any incomplete branch,
                 else {
                     // Prioritize adopting one of the new branches
-                    adoptableBranches.filter {
-                        priorityMap[it] == maxAdoptablePriority
-                    }.toSet()
+                    adoptableBranches.filter { priorityMap[it] == maxAdoptablePriority }.toSet()
                 }
 
             // branchCompletionMap but keys are only candidates
             val candidateCompletionMap: Map<PolicyBranch, Int> =
-                civInfo.policies.branchCompletionMap.filterKeys { key ->
-                    key in candidates
-                }
+                civInfo.policies.branchCompletionMap.filterKeys { key -> key in candidates }
 
             // Choose the branch with the LEAST REMAINING policies, not the MOST ADOPTED ones
-            val targetBranch = candidateCompletionMap.minBy { it.key.policies.size - it.value }.key
+            val targetBranch = candidateCompletionMap.asIterable()
+                .groupBy { it.key.policies.size - it.value }
+                .minByOrNull { it.key }!!.value.random().key
 
             val policyToAdopt: Policy =
                 if (civInfo.policies.isAdoptable(targetBranch)) targetBranch
                 else targetBranch.policies.filter { civInfo.policies.isAdoptable(it) }
-                    .randomWeighted { it.getWeightForAiDecision(StateForConditionals(civInfo)) }
+                    .randomWeighted { it.getWeightForAiDecision(civInfo.state) }
 
             civInfo.policies.adopt(policyToAdopt)
         }
@@ -402,7 +399,7 @@ object NextTurnAutomation {
                     continue
                 val buildingToSell = civInfo.gameInfo.ruleset.buildings.values.filter {
                         city.cityConstructions.isBuilt(it.name)
-                        && it.requiredResources(StateForConditionals(civInfo, city)).contains(resource)
+                        && it.requiredResources(city.state).contains(resource)
                         && it.isSellable()
                         && !civInfo.civConstructions.hasFreeBuilding(city, it) }
                     .randomOrNull()
@@ -538,8 +535,8 @@ object NextTurnAutomation {
             }) return
         val settlerUnits = civInfo.gameInfo.ruleset.units.values
                 .filter { it.isCityFounder() && it.isBuildable(civInfo) &&
-                    personality.getMatchingUniques(UniqueType.WillNotBuild, StateForConditionals(civInfo))
-                        .none { unique -> it.matchesFilter(unique.params[0]) } }
+                    personality.getMatchingUniques(UniqueType.WillNotBuild, civInfo.state)
+                        .none { unique -> it.matchesFilter(unique.params[0], civInfo.state) } }
         if (settlerUnits.isEmpty()) return
 
         if (civInfo.units.getCivUnits().count { it.isMilitary() } < civInfo.cities.size) return // We need someone to defend them first
@@ -647,13 +644,16 @@ object NextTurnAutomation {
     fun getClosestCities(civ1: Civilization, civ2: Civilization): CityDistance? {
         if (civ1.cities.isEmpty() || civ2.cities.isEmpty())
             return null
+        
+        var minDistance: CityDistance? = null
 
-        val cityDistances = arrayListOf<CityDistance>()
         for (civ1city in civ1.cities)
-            for (civ2city in civ2.cities)
-                cityDistances += CityDistance(civ1city, civ2city,
-                        civ1city.getCenterTile().aerialDistanceTo(civ2city.getCenterTile()))
+            for (civ2city in civ2.cities){
+                val currentDistance = civ1city.getCenterTile().aerialDistanceTo(civ2city.getCenterTile())
+                if (minDistance == null || currentDistance < minDistance.aerialDistance)
+                    minDistance = CityDistance(civ1city, civ2city, currentDistance)
+                }
 
-        return cityDistances.minByOrNull { it.aerialDistance }!!
+        return minDistance
     }
 }

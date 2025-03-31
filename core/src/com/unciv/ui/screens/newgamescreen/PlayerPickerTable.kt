@@ -15,6 +15,7 @@ import com.unciv.models.metadata.GameSetupInfo
 import com.unciv.models.metadata.Player
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.nation.Nation
+import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.translations.tr
 import com.unciv.ui.components.input.KeyCharAndCode
 import com.unciv.ui.components.widgets.UncivTextField
@@ -26,6 +27,7 @@ import com.unciv.ui.components.input.onActivation
 import com.unciv.ui.components.input.onClick
 import com.unciv.ui.components.extensions.setFontColor
 import com.unciv.ui.components.extensions.surroundWithCircle
+import com.unciv.ui.components.extensions.toCheckBox
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
 import com.unciv.ui.images.ImageGetter
@@ -68,6 +70,8 @@ class PlayerPickerTable(
             player.playerId = "" // This is to stop people from getting other users' IDs and cheating with them in multiplayer games
 
         top()
+        gameParameters.shufflePlayerOrder = false
+        add("Shuffle Civ Order at Start".toCheckBox(false) { gameParameters.shufflePlayerOrder = it }).padTop(5f).padBottom(5f).row()
         add(ScrollPane(playerListTable).apply { setOverscroll(false, false) }).width(civBlocksWidth)
         update()
         background = BaseScreen.skinStrings.getUiBackground("NewGameScreen/PlayerPickerTable", tintColor = BaseScreen.skinStrings.skinConfig.clearColor)
@@ -83,7 +87,8 @@ class PlayerPickerTable(
         val gameBasics = previousScreen.ruleset // the mod picking changes this ruleset
 
         reassignRemovedModReferences()
-        val newRulesetPlayableCivs = previousScreen.ruleset.nations.count { it.key != Constants.barbarians }
+        val newRulesetPlayableCivs = previousScreen.ruleset.nations
+            .count { it.key != Constants.barbarians && !it.value.hasUnique(UniqueType.WillNotBeChosenForNewGames) }
         if (gameParameters.players.size > newRulesetPlayableCivs)
             gameParameters.players = ArrayList(gameParameters.players.subList(0, newRulesetPlayableCivs))
         if (desiredCiv.isNotEmpty()) assignDesiredCiv(desiredCiv)
@@ -100,7 +105,7 @@ class PlayerPickerTable(
         }
 
         if (!locked && gameParameters.players.size < gameBasics.nations.values.count { it.isMajorCiv }) {
-            val addPlayerButton = "+".toLabel(Color.BLACK, 30)
+            val addPlayerButton = "+".toLabel(ImageGetter.CHARCOAL, 30)
                 .apply { this.setAlignment(Align.center) }
                 .surroundWithCircle(50f)
                 .onClick {
@@ -148,7 +153,9 @@ class PlayerPickerTable(
      */
     private fun reassignRemovedModReferences() {
         for (player in gameParameters.players) {
-            if (!previousScreen.ruleset.nations.containsKey(player.chosenCiv) || previousScreen.ruleset.nations[player.chosenCiv]!!.isCityState)
+            if (!previousScreen.ruleset.nations.containsKey(player.chosenCiv)
+                || previousScreen.ruleset.nations[player.chosenCiv]!!.isCityState
+                || previousScreen.ruleset.nations[player.chosenCiv]!!.hasUnique(UniqueType.WillNotBeChosenForNewGames))
                 player.chosenCiv = Constants.random
         }
     }
@@ -211,7 +218,7 @@ class PlayerPickerTable(
         }
 
         if (!locked) {
-            playerTable.add("-".toLabel(Color.BLACK, 30, Align.center)
+            playerTable.add("-".toLabel(ImageGetter.CHARCOAL, 30, Align.center)
                 .surroundWithCircle(40f)
                 .onClick {
                     gameParameters.players.remove(player)
@@ -323,6 +330,7 @@ class PlayerPickerTable(
     internal fun getAvailablePlayerCivs(dontSkipNation: String? = null) =
         previousScreen.ruleset.nations.values.asSequence()
             .filter { it.isMajorCiv }
+            .filterNot { it.hasUnique(UniqueType.WillNotBeChosenForNewGames) }
             .filter { it.name == dontSkipNation || gameParameters.players.none { player -> player.chosenCiv == it.name } }
 
     /**

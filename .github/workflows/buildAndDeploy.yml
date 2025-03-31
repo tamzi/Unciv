@@ -201,10 +201,10 @@ jobs:
 
           wget -q -O packr-all-4.0.0.jar https://github.com/libgdx/packr/releases/download/4.0.0/packr-all-4.0.0.jar
 
-          wget -q -O jre-linux-64.tar.gz https://api.adoptium.net/v3/binary/latest/11/ga/linux/x64/jre/hotspot/normal/eclipse
+          wget -q -O jre-linux-64.tar.gz https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jre/hotspot/normal/eclipse
           ./gradlew desktop:packrLinux64
 
-          wget -q -O jdk-windows-64.zip https://api.adoptium.net/v3/binary/latest/11/ga/windows/x64/jre/hotspot/normal/eclipse
+          wget -q -O jdk-windows-64.zip https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse
           ./gradlew desktop:packrWindows64
 
       - name: Upload packed zips
@@ -216,6 +216,7 @@ jobs:
             deploy/Unciv-Linux64.zip
 
   build-msi:
+    continue-on-error: true
     needs: packr-build
     runs-on: windows-latest
 
@@ -301,7 +302,7 @@ jobs:
       - name: Check if this is a real release or a test version, for Github release
         id: check-version-tag
         run: |
-          if [[ ${{ github.ref_name }} =~ [0-9]\.[0-9]+\.[0-9]+ ]]; then
+          if [[ ${{ github.ref_name }} =~ [0-9]\.[0-9]+\.[0-9]+(-patch[0-9]+)?$ ]]; then
             echo "real_release=true" >> $GITHUB_OUTPUT
           fi
 
@@ -362,3 +363,17 @@ jobs:
           ssh_keyscan_types: rsa
           updpkgsums: true
           allow_empty_commits: false
+          
+  brew-update:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    needs: [ get-release-body, upload-github-release-and-post-to-discord ]
+    steps:
+      - name: Update Homebrew formula
+        continue-on-error: true
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: unciv
+          download-url: https://github.com/yairm210/Unciv/releases/download/${{ github.ref_name }}/Unciv.jar
+        env:
+          COMMITTER_TOKEN: ${{ secrets.ACTIONS_ACCESS_TOKEN }}

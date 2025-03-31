@@ -110,7 +110,7 @@ object Conditionals {
             UniqueType.ConditionalTutorialsEnabled -> UncivGame.Current.settings.showTutorials
             UniqueType.ConditionalTutorialCompleted -> conditional.params[0] in UncivGame.Current.settings.tutorialTasksCompleted
 
-            UniqueType.ConditionalCivFilter, UniqueType.ConditionalCivFilterOld -> checkOnCiv { matchesFilter(conditional.params[0]) }
+            UniqueType.ConditionalCivFilter -> checkOnCiv { matchesFilter(conditional.params[0], state) }
             UniqueType.ConditionalWar -> checkOnCiv { isAtWar() }
             UniqueType.ConditionalNotWar -> checkOnCiv { !isAtWar() }
             UniqueType.ConditionalWithResource -> state.getResourceAmount(conditional.params[0]) > 0
@@ -132,21 +132,32 @@ object Conditionals {
             UniqueType.ConditionalAboveHappiness -> checkOnCiv { stats.happiness > conditional.params[0].toInt() }
             UniqueType.ConditionalBelowHappiness -> checkOnCiv { stats.happiness < conditional.params[0].toInt() }
             UniqueType.ConditionalGoldenAge -> checkOnCiv { goldenAges.isGoldenAge() }
+            UniqueType.ConditionalNotGoldenAge -> checkOnCiv { !goldenAges.isGoldenAge() }
 
             UniqueType.ConditionalBeforeEra -> compareEra(conditional.params[0]) { current, param -> current < param }
             UniqueType.ConditionalStartingFromEra -> compareEra(conditional.params[0]) { current, param -> current >= param }
             UniqueType.ConditionalDuringEra -> compareEra(conditional.params[0]) { current, param -> current == param }
             UniqueType.ConditionalIfStartingInEra -> checkOnGameInfo { gameParameters.startingEra == conditional.params[0] }
             UniqueType.ConditionalSpeed -> checkOnGameInfo { gameParameters.speed == conditional.params[0] }
+            UniqueType.ConditionalDifficulty -> checkOnGameInfo { gameParameters.difficulty == conditional.params[0] }
             UniqueType.ConditionalVictoryEnabled -> checkOnGameInfo { gameParameters.victoryTypes.contains(conditional.params[0]) }
             UniqueType.ConditionalVictoryDisabled -> checkOnGameInfo { !gameParameters.victoryTypes.contains(conditional.params[0]) }
             UniqueType.ConditionalReligionEnabled -> checkOnGameInfo { isReligionEnabled() }
             UniqueType.ConditionalReligionDisabled -> checkOnGameInfo { !isReligionEnabled() }
             UniqueType.ConditionalEspionageEnabled -> checkOnGameInfo { isEspionageEnabled() }
             UniqueType.ConditionalEspionageDisabled -> checkOnGameInfo { !isEspionageEnabled() }
-            UniqueType.ConditionalTech -> checkOnCiv { tech.isResearched(conditional.params[0]) }
-            UniqueType.ConditionalNoTech -> checkOnCiv { !tech.isResearched(conditional.params[0]) }
-            UniqueType.ConditionalWhileResearching -> checkOnCiv { tech.currentTechnologyName() == conditional.params[0] }
+            UniqueType.ConditionalNuclearWeaponsEnabled -> checkOnGameInfo { gameParameters.nuclearWeaponsEnabled }
+            UniqueType.ConditionalTech -> checkOnCiv {
+                val filter = conditional.params[0]
+                if (filter in gameInfo.ruleset.technologies) tech.isResearched(conditional.params[0]) // fast common case
+                else tech.researchedTechnologies.any { it.matchesFilter(filter) }
+            }
+            UniqueType.ConditionalNoTech -> checkOnCiv {
+                val filter = conditional.params[0]
+                if (filter in gameInfo.ruleset.technologies) !tech.isResearched(conditional.params[0]) // fast common case
+                else tech.researchedTechnologies.none { it.matchesFilter(filter) }
+            }
+            UniqueType.ConditionalWhileResearching -> checkOnCiv { tech.currentTechnology()?.matchesFilter(conditional.params[0]) == true }
 
             UniqueType.ConditionalAfterPolicyOrBelief ->
                 checkOnCiv { policies.isAdopted(conditional.params[0]) || religionManager.religion?.hasBelief(conditional.params[0]) == true }
@@ -184,6 +195,14 @@ object Conditionals {
             UniqueType.ConditionalInThisCity -> state.relevantCity != null
             UniqueType.ConditionalCityFilter -> checkOnCity { matchesFilter(conditional.params[0], state.relevantCiv) }
             UniqueType.ConditionalCityConnected -> checkOnCity { isConnectedToCapital() }
+            UniqueType.ConditionalCityReligion -> checkOnCity {
+                religion.getMajorityReligion()
+                    ?.matchesFilter(conditional.params[0], state, state.relevantCiv) == true
+            }
+            UniqueType.ConditionalCityNotReligion -> checkOnCity {
+                religion.getMajorityReligion()
+                    ?.matchesFilter(conditional.params[0], state, state.relevantCiv) != true
+            }
             UniqueType.ConditionalCityMajorReligion -> checkOnCity {
                 religion.getMajorityReligion()?.isMajorReligion() == true }
             UniqueType.ConditionalCityEnhancedReligion -> checkOnCity {
@@ -206,16 +225,16 @@ object Conditionals {
             UniqueType.ConditionalWhenGarrisoned ->
                 checkOnCity { getCenterTile().militaryUnit?.canGarrison() == true }
 
-            UniqueType.ConditionalVsCity -> state.theirCombatant?.matchesFilter("City") == true
+            UniqueType.ConditionalVsCity -> state.theirCombatant?.matchesFilter("City", false) == true
             UniqueType.ConditionalVsUnits,  UniqueType.ConditionalVsCombatant -> state.theirCombatant?.matchesFilter(conditional.params[0]) == true
             UniqueType.ConditionalOurUnit, UniqueType.ConditionalOurUnitOnUnit ->
                 state.relevantUnit?.matchesFilter(conditional.params[0]) == true
             UniqueType.ConditionalUnitWithPromotion -> state.relevantUnit != null &&
                     (state.relevantUnit!!.promotions.promotions.contains(conditional.params[0])
-                    || state.relevantUnit!!.statuses.any { it.name == conditional.params[0] } )
+                    || state.relevantUnit!!.hasStatus(conditional.params[0]) )
             UniqueType.ConditionalUnitWithoutPromotion -> state.relevantUnit != null &&
                     !(state.relevantUnit!!.promotions.promotions.contains(conditional.params[0])
-                            || state.relevantUnit!!.statuses.any { it.name == conditional.params[0] } )
+                            || state.relevantUnit!!.hasStatus(conditional.params[0]) )
             UniqueType.ConditionalAttacking -> state.combatAction == CombatAction.Attack
             UniqueType.ConditionalDefending -> state.combatAction == CombatAction.Defend
             UniqueType.ConditionalAboveHP -> state.relevantUnit != null && state.relevantUnit!!.health > conditional.params[0].toInt()

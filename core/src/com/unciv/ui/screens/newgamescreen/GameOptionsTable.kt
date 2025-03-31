@@ -222,7 +222,7 @@ class GameOptionsTable(
     }
 
     private fun numberOfCityStates() = ruleset.nations.values.count {
-        it.isCityState && !it.hasUnique(UniqueType.CityStateDeprecated)
+        it.isCityState && !it.hasUnique(UniqueType.WillNotBeChosenForNewGames)
     }
 
     private fun Table.addNoStartBiasCheckbox() =
@@ -514,7 +514,7 @@ private class RandomNationPickerPopup(
         const val buttonsCircleSize = 70f
         const val buttonsIconSize = 50f
         const val buttonsOffsetFromEdge = 5f
-        val buttonsBackColor: Color = Color.BLACK.cpy().apply { a = 0.67f }
+        val buttonsBackColor: Color = ImageGetter.CHARCOAL.cpy().apply { a = 0.67f }
     }
 
     // This Popup's body has two halves of same size, either side by side or arranged vertically
@@ -538,6 +538,7 @@ private class RandomNationPickerPopup(
     init {
         val sortedNations = previousScreen.ruleset.nations.values
                 .filter { it.isMajorCiv }
+                .filterNot { it.hasUnique(UniqueType.WillNotBeChosenForNewGames) }
                 .sortedWith(compareBy(UncivGame.Current.settings.getCollatorFromLocale()) { it.name.tr(hideIcons = true) })
         allNationTables = ArrayList(
             sortedNations.map { NationTable(it, civBlocksWidth, 0f) }  // no need for min height

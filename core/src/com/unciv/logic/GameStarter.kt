@@ -195,6 +195,7 @@ object GameStarter {
             val startingEraNumber = ruleset.eras[gameSetupInfo.gameParameters.startingEra]!!.eraNumber
             for (tech in ruleset.technologies.values) {
                 if (ruleset.eras[tech.era()]!!.eraNumber >= startingEraNumber) continue
+                if (civInfo.tech.isUnresearchable(tech)) continue
                 civInfo.addTechSilently(tech.name)
             }
 
@@ -249,7 +250,8 @@ object GameStarter {
                 if (gameSetupInfo.gameParameters.enableRandomNationsPool)
                     gameSetupInfo.gameParameters.randomNationsPool.asSequence()
                 else
-                    ruleset.nations.filter { it.value.isMajorCiv }.keys.asSequence()
+                    ruleset.nations.filter { it.value.isMajorCiv && !it.value.hasUnique(UniqueType.WillNotBeChosenForNewGames) }
+                        .keys.asSequence()
                 ).filter { it !in selectedPlayerNames }
             .shuffled().toCollection(ArrayDeque(dequeCapacity))
 
@@ -307,6 +309,19 @@ object GameStarter {
             }
         }.toCollection(chosenPlayers)
 
+        // ensure Spectators always first players
+        val spectators = chosenPlayers.filter { it.chosenCiv == Constants.spectator }
+        val otherPlayers = chosenPlayers.filterNot { it.chosenCiv == Constants.spectator }.toMutableList()
+        
+        // Shuffle Major Civs
+        if (newGameParameters.shufflePlayerOrder) {
+            otherPlayers.shuffle()
+        }
+
+        chosenPlayers.clear()
+        chosenPlayers.addAll(spectators)
+        chosenPlayers.addAll(otherPlayers)
+
         // Add CityStates to result - disguised as normal AI, but addCivilizations will detect them
         val numberOfCityStates = if (newGameParameters.randomNumberOfCityStates) {
             // This swaps min and max if the user accidentally swapped min and max
@@ -320,7 +335,7 @@ object GameStarter {
         ruleset.nations.asSequence()
             .filter {
                 it.value.isCityState &&
-                        !it.value.hasUnique(UniqueType.CityStateDeprecated)
+                        !it.value.hasUnique(UniqueType.WillNotBeChosenForNewGames)
             }.map { it.key }
             .shuffled()
             .sortedByDescending { it in civNamesWithStartingLocations }  // please those with location first
@@ -428,7 +443,7 @@ object GameStarter {
             //Trigger any global or nation uniques that should triggered.
             //We may need the starting location for some uniques, which is why we're doing it now
             val startingTriggers = (ruleset.globalUniques.uniqueObjects + civ.nation.uniqueObjects)
-            for (unique in startingTriggers.filter { !it.hasTriggerConditional() && it.conditionalsApply(civ) })
+            for (unique in startingTriggers.filter { !it.hasTriggerConditional() && it.conditionalsApply(civ.state) })
                 UniqueTriggerActivation.triggerUnique(unique, civ, tile = startingLocation)
         }
     }
@@ -638,14 +653,14 @@ object GameStarter {
                     val tileToAvoid = startBias.getPlaceholderParameters()[0]
                     preferredTiles.filter { tile ->
                         !tile.getTilesInDistance(1).any {
-                            it.matchesTerrainFilter(tileToAvoid)
+                            it.matchesTerrainFilter(tileToAvoid, null)
                         }
                     }
                 }
                 startBias in tileMap.naturalWonders -> preferredTiles  // passthrough: already failed
                 else -> preferredTiles.filter { tile ->
                     tile.getTilesInDistance(1).any {
-                        it.matchesTerrainFilter(startBias)
+                        it.matchesTerrainFilter(startBias, null)
                     }
                 }
             }

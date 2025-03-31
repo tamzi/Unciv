@@ -15,13 +15,10 @@ import com.unciv.models.ruleset.unit.Promotion
 import com.unciv.models.translations.tr
 import com.unciv.ui.audio.SoundPlayer
 import com.unciv.ui.components.extensions.isEnabled
+import com.unciv.ui.components.extensions.toCheckBox
 import com.unciv.ui.components.extensions.toTextButton
-import com.unciv.ui.components.input.KeyCharAndCode
-import com.unciv.ui.components.input.KeyboardBinding
-import com.unciv.ui.components.input.keyShortcuts
-import com.unciv.ui.components.input.onActivation
-import com.unciv.ui.components.input.onClick
-import com.unciv.ui.components.input.onDoubleClick
+import com.unciv.ui.components.fonts.Fonts
+import com.unciv.ui.components.input.*
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.ui.screens.basescreen.RecreateOnResize
@@ -64,6 +61,8 @@ class PromotionPickerScreen private constructor(
     // Logic
     private val tree = PromotionTree(unit)
 
+    // This if we should save the unit promotion or not.
+    private var saveUnitTypePromotion = false
 
     init {
         closeButton.onActivation {
@@ -77,6 +76,8 @@ class PromotionPickerScreen private constructor(
             rightSideButton.setText("Pick promotion".tr())
             rightSideButton.onClick(UncivSound.Silent) {
                 acceptPromotion(selectedPromotion)
+                
+                checkSaveUnitTypePrormotion()
             }
         } else {
             rightSideButton.isVisible = false
@@ -190,10 +191,35 @@ class PromotionPickerScreen private constructor(
             row += 1
         }
 
-        topTable.add(promotionsTable)
+        topTable.add(promotionsTable).row()
+        saveUnitTypePromotionForCity()
+        if (unit.statusMap.isNotEmpty()) addStatuses()
         addConnectingLines(emptySet())
     }
 
+    // adds the checkBoxs to choice to save unit promotion.
+    private fun saveUnitTypePromotionForCity() {
+        // if you are not in a city tile then don't show up 
+        // then player should not be able to save promotion in enermy tiles/puppet citys 
+        // even their own because you can't build any unit there.
+        val currentCity = unit.currentTile.getCity() ?: return
+        if (currentCity.civ.civName != unit.civ.civName) return
+        if (currentCity.isPuppet) return
+        val checkBoxSaveUnitPromotion = "Default promotions for [${unit.baseUnit.name}]".toCheckBox(saveUnitTypePromotion) {saveUnitTypePromotion = it}
+        promotionsTable.add(checkBoxSaveUnitPromotion)
+    }
+    
+    // going to reuse this bit of code 2 time so turn it into a funtion
+    private fun checkSaveUnitTypePrormotion() {
+        if (!saveUnitTypePromotion)  return
+        val unitCurrentCity = unit.currentTile.getCity()
+        if (unitCurrentCity != null) {
+            // If you are clicked the save baseUnit promotion, you want the next baseUnit to have the same promotion.
+            unitCurrentCity.unitShouldUseSavedPromotion[unit.baseUnit.name] = true
+            unitCurrentCity.unitToPromotions[unit.baseUnit.name] = unit.promotions
+        }
+    }
+    
     private fun getButton(tree: PromotionTree, node: PromotionTree.PromotionNode) : PromotionButton {
         val isPickable = canPromoteNow &&
             (!node.pathIsAmbiguous || node.distanceToAdopted == 1) &&
@@ -221,9 +247,22 @@ class PromotionPickerScreen private constructor(
         if (isPickable)
             button.onDoubleClick(UncivSound.Silent) {
                 acceptPromotion(button)
+                checkSaveUnitTypePrormotion()
             }
 
         return button
+    }
+    
+    private fun addStatuses() {
+        val statusTable = Table().apply { defaults().pad(5f) }
+        for (status in unit.statusMap.values.sortedBy { it.turnsLeft }) {
+            val statusButton = "{${status.name}}: ${status.turnsLeft}${Fonts.turn}".toTextButton()
+            val description = "{${status.name}}: ${status.turnsLeft}${Fonts.turn}\n".tr() +
+                    unit.civ.gameInfo.ruleset.unitPromotions[status.name]?.getDescription(emptySet())
+            statusButton.onClick { descriptionLabel.setText(description) }
+            statusTable.add(statusButton).left().row()
+        }
+        topTable.add(statusTable).row()
     }
 
     private fun addConnectingLines(path: Set<Promotion>) {
@@ -352,7 +391,6 @@ class PromotionPickerScreen private constructor(
     }
 
     override fun recreate() = recreate(closeOnPick)
-
     fun recreate(closeOnPick: Boolean): BaseScreen {
         val newScreen = PromotionPickerScreen(unit, closeOnPick, originalName, onChange)
         newScreen.setScrollY(scrollPane.scrollY)

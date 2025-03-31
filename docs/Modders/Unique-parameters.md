@@ -169,6 +169,21 @@ Allowed values:
 - `Specialists`
 - `Unemployed`
 - `Followers of the Majority Religion` or `Followers of this Religion`, both of which only apply when this religion is the majority religion in that city
+- Specialist names
+
+## religionFilter
+
+For filtering specific relgions
+
+- `any`
+- `major`
+- `enhanced`
+- `your`
+- `foriegn`
+- `enemy`
+- The name of a relgion symbol
+- The name of a belief
+- A unique of a belief the religion has
 
 ## policyFilter
 
@@ -220,8 +235,12 @@ These can be strung together with ", " between them, for example: `+2 Production
 
 ## resourceFilter
 
-At the moment, only used for the `"Improves [resourceFilter] resource in this tile"` Unique on Improvements.
-Allows filtering resources by their name, their type, or by any Stat listed in their `improvementStats` property. The `all` keyword works too.
+Allowed values:
+
+- Resource name
+- `any`, `all`
+- Resource type: `Strategic`, `Luxury`, `Bonus`
+- Stat provided by the resource when improved (e.g. `Food`)
 
 ## stockpiledResource
 
@@ -233,6 +252,17 @@ don't have enough left in stock.
 
 To use, you need to first define a TileResources with the "Stockpiled" Unique. Then you can reference
 them in other Uniques.
+
+## Stockpile
+
+Something that can be added to a civ
+
+Allowed values:
+
+- stockpiled resource (see above)
+- Stat name - for global stats, not city stats
+- `Stored Food` (for cities)
+- `Golden Age points`
 
 ## technologyFilter
 
@@ -287,6 +317,8 @@ Allowed values:
 - [improvementFilter](#improvementfilter) for this tile
 - `Improvement` or `improved` for tiles with any improvements
 - `unimproved` for tiles with no improvement
+- `pillaged` for pillaged tiles
+- `worked` for tiles worked by a city
 
 You can check this in-game using the console with the `tile checkfilter <filter>` command
 
@@ -313,6 +345,7 @@ Allowed values:
 - `Units`, `[mapUnitFilter] Units`
 - `[buildingFilter] Buildings`
 - `Remaining [civFilter] Civilizations`
+- `Owned [tileFilter] Tiles`
 - Stat name - gets the stat *reserve*, not the amount per turn (can be city stats or civilization stats, depending on where the unique is used)
 - Resource name (can be city stats or civilization stats, depending on where the unique is used)
 

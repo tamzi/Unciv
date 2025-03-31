@@ -115,13 +115,14 @@ object UnitActionModifiers {
                 UniqueType.UnitActionStockpileCost -> {
                     val amount = conditional.params[0].toInt()
                     val resourceName = conditional.params[1]
-                    if(unit.civ.getCivResourcesByName()[resourceName] != null)
-                        unit.civ.resourceStockpiles.add(resourceName, -amount)
+                    val resource = unit.civ.gameInfo.ruleset.tileResources[resourceName]
+                    if (resource != null && resource.isStockpiled)
+                        unit.civ.gainStockpiledResource(resource, -amount)
                 }
                 UniqueType.UnitActionRemovingPromotion -> {
                     val promotionName = conditional.params[0]
                     // if has a status, remove that instead - the promotion is 'safe'
-                    if (unit.statuses.any { it.name == promotionName }) {
+                    if (unit.hasStatus(promotionName)) {
                         unit.removeStatus(promotionName)
                     } else { // check for real promotion
                         unit.promotions.removePromotion(promotionName)

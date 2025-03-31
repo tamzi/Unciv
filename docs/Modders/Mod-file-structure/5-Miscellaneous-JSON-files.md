@@ -131,13 +131,12 @@ You can use text and/or civilopediaText, if both are present both are shown (but
 
 Event choices are comprised of:
 
-| Attribute        | Type                        | Default    | Notes                                                                                                                |
-|------------------|-----------------------------|------------|----------------------------------------------------------------------------------------------------------------------|
-| text             | String                      | Required   | Displayed to user as button. Should be an action name - "Do X"                                                       |
-| triggeredUniques | List of trigger uniques     | Required   | The triggers that this choice activates upon being chosen                                                            |
-| conditions       | List of conditional uniques | Empty list | If any conditional is not met, this option becomes unpickable (not shown)                                            |
-| keyShortcut      | key to select (name)        | none       | Key names see [Gdx.Input.Keys](https://github.com/libgdx/libgdx/blob/master/gdx/src/com/badlogic/gdx/Input.java#L69) |
-| civilopediaText  | List                        | Optional   | See [civilopediaText chapter](5-Miscellaneous-JSON-files#civilopedia-text)                                        |
+| Attribute       | Type                                           | Default    | Notes                                                                                                               |
+|-----------------|------------------------------------------------|------------|---------------------------------------------------------------------------------------------------------------------|
+| text            | String                                         | Required   | Displayed to user as button. Should be an action name - "Do X"                                                      |
+| uniques         | List of uniques to trigger or limit conditions | Required   | The triggers that this choice activates upon being chosen, and "Unavailable" / "Only available" uniques             |
+| keyShortcut     | key to select (name)                           | none       | Key names see [Gdx.Input.Keys](https://github.com/libgdx/libgdx/blob/master/gdx/src/com/badlogic/gdx/Input.java#L69) |
+| civilopediaText | List                                           | Optional   | See [civilopediaText chapter](5-Miscellaneous-JSON-files#civilopedia-text)                                          |
 
 Here, civilopediaText is shown outside the active Button, before the triggeredUniques.
 
@@ -292,7 +291,15 @@ With `civModifier` being the multiplicative aggregate of ["\[relativeAmount\]% G
 [link to original](https://github.com/yairm210/Unciv/tree/master/android/assets/jsons/GlobalUniques.json)
 
 GlobalUniques defines uniques that apply globally. e.g. Vanilla rulesets define the effects of Unhappiness here.
-Only the `uniques` field is used, but a name must still be set (the Ruleset validator might display it).
+
+It has the following structure:
+
+| Attribute   | Type            | Default         | Notes                                                                                       |
+|-------------|-----------------|-----------------|---------------------------------------------------------------------------------------------|
+| name        | String          | "GlobalUniques" | The name field is not used, but still must be set (the Ruleset validator might display it). |
+| uniques     | List of Strings | empty           | List of [unique abilities](../../uniques) that apply globally                               |
+| unitUniques | List of Strings | empty           | List of [unique abilities](../../uniques) that applies to each unit                         |
+
 When extension rulesets define GlobalUniques, all uniques are merged. At the moment there is no way to change/remove uniques set by a base mod.
 
 ## Tutorials.json

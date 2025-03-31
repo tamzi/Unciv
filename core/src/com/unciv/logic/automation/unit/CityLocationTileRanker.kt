@@ -24,7 +24,8 @@ object CityLocationTileRanker {
      * Returns a hashmap of tiles to their ranking plus the a the highest value tile and its value
      */
     fun getBestTilesToFoundCity(unit: MapUnit, distanceToSearch: Int? = null, minimumValue: Float): BestTilesToFoundCity {
-        val range =  if (distanceToSearch != null) distanceToSearch else {
+        val distanceModifier = 3f // percentage penalty per aerial distance from unit (Settler)
+        val range = if (distanceToSearch != null) distanceToSearch else {
             val distanceFromHome = if (unit.civ.cities.isEmpty()) 0
             else unit.civ.cities.minOf { it.getCenterTile().aerialDistanceTo(unit.getTile()) }
             (8 - distanceFromHome).coerceIn(1, 5) // Restrict vision when far from home to avoid death marches
@@ -43,7 +44,9 @@ object CityLocationTileRanker {
 
         val possibleTileLocationsWithRank = possibleCityLocations
             .map {
-                val tileValue = rankTileToSettle(it, unit.civ, nearbyCities, baseTileMap, uniqueCache)
+                var tileValue = rankTileToSettle(it, unit.civ, nearbyCities, baseTileMap, uniqueCache)
+                val distanceScore = (unit.currentTile.aerialDistanceTo(it) * distanceModifier).coerceIn(0f, 99f)
+                tileValue *= (100 - distanceScore) / 100
                 if (tileValue >= minimumValue)
                     bestTilesToFoundCity.tileRankMap[it] = tileValue
 
@@ -90,7 +93,7 @@ object CityLocationTileRanker {
         val onCoast = newCityTile.isCoastalTile()
         val onHill = newCityTile.isHill()
         val isNextToMountain = newCityTile.isAdjacentTo("Mountain")
-        // Only count a luxary resource that we don't have yet as unique once
+        // Only count a luxury resource that we don't have yet as unique once
         val newUniqueLuxuryResources = HashSet<String>()
 
         if (onCoast) tileValue += 3
@@ -103,8 +106,8 @@ object CityLocationTileRanker {
         // We want to found the city on an oasis because it can't be improved otherwise
         if (newCityTile.terrainHasUnique(UniqueType.Unbuildable)) tileValue += 3
         // If we build the city on a resource tile, then we can't build any special improvements on it
-        if (newCityTile.resource != null) tileValue -= 4
-        if (newCityTile.resource != null && newCityTile.tileResource.resourceType == ResourceType.Bonus) tileValue -= 8
+        if (newCityTile.hasViewableResource(civ)) tileValue -= 4
+        if (newCityTile.hasViewableResource(civ) && newCityTile.tileResource.resourceType == ResourceType.Bonus) tileValue -= 8
         // Settling on bonus resources tends to waste a food
         // Settling on luxuries generally speeds up our game, and settling on strategics as well, as the AI cheats and can see them.
 
@@ -155,7 +158,7 @@ object CityLocationTileRanker {
         // Don't settle near but not on the coast
         if (rankTile.isCoastalTile() && !onCoast) locationSpecificTileValue -= 2
         // Check if there are any new unique luxury resources
-        if (rankTile.resource != null && rankTile.tileResource.resourceType == ResourceType.Luxury
+        if (rankTile.hasViewableResource(civ) && rankTile.tileResource.resourceType == ResourceType.Luxury
             && !(civ.hasResource(rankTile.resource!!) || newUniqueLuxuryResources.contains(rankTile.resource))) {
             locationSpecificTileValue += 10
             newUniqueLuxuryResources.add(rankTile.resource!!)
@@ -167,7 +170,7 @@ object CityLocationTileRanker {
 
         var rankTileValue = Automation.rankStatsValue(rankTile.stats.getTileStats(null, civ, uniqueCache), civ)
 
-        if (rankTile.resource != null) {
+        if (rankTile.hasViewableResource(civ)) {
             rankTileValue += when (rankTile.tileResource.resourceType) {
                 ResourceType.Bonus -> 2f
                 ResourceType.Strategic -> 1.2f * rankTile.resourceAmount

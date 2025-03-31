@@ -11,6 +11,7 @@ import com.unciv.models.ruleset.tile.TerrainType
 import com.unciv.models.ruleset.unique.UniqueParameterType.Companion.guessTypeForTranslationWriter
 import com.unciv.models.ruleset.validation.Suppression
 import com.unciv.models.stats.Stat
+import com.unciv.models.stats.SubStat
 import com.unciv.models.translations.TranslationFileWriter
 import com.unciv.models.translations.equalsPlaceholderText
 
@@ -76,6 +77,7 @@ enum class UniqueParameterType(
             parameterText.equalsPlaceholderText("[] Cities") -> true
             parameterText.equalsPlaceholderText("[] Units") -> true
             parameterText.equalsPlaceholderText("Remaining [] Civilizations") -> true
+            parameterText.equalsPlaceholderText("Owned [] Tiles") -> true
             else -> super.isKnownValue(parameterText, ruleset)
         }
 
@@ -313,6 +315,8 @@ enum class UniqueParameterType(
         severityDefault = UniqueType.UniqueParameterErrorSeverity.RulesetInvariant
     ) {
         override val staticKnownValues = setOf("Population", "Specialists", "Unemployed", "Followers of the Majority Religion", "Followers of this Religion")
+        override fun getKnownValuesForAutocomplete(ruleset: Ruleset): Set<String> =
+            staticKnownValues + ruleset.specialists.keys
     },
 
     /** Implemented by [Tile.matchesTerrainFilter][com.unciv.logic.map.tile.Tile.matchesTerrainFilter] */
@@ -348,7 +352,7 @@ enum class UniqueParameterType(
 
     /** Implemented by [Tile.matchesFilter][com.unciv.logic.map.tile.Tile.matchesFilter] */
     TileFilter("tileFilter", "Farm", "Anything that can be used either in an improvementFilter or in a terrainFilter can be used here, plus 'unimproved'", "Tile Filters") {
-        override val staticKnownValues = setOf("unimproved", "improved", "All Road", "Great Improvement")
+        override val staticKnownValues = setOf("unimproved", "improved", "worked", "pillaged", "All Road", "Great Improvement")
 
         override fun getErrorSeverity(parameterText: String, ruleset: Ruleset) = getErrorSeverityForFilter(parameterText, ruleset)
 
@@ -356,6 +360,7 @@ enum class UniqueParameterType(
             parameterText in staticKnownValues -> true
             ImprovementFilter.isKnownValue(parameterText, ruleset) -> true
             TerrainFilter.isKnownValue(parameterText, ruleset) -> true
+            CivFilter.isKnownValue(parameterText, ruleset) -> true
             else -> false
         }
 
@@ -426,6 +431,9 @@ enum class UniqueParameterType(
     Speed("speed", "Quick", "The name of any speed") {
         override fun getKnownValuesForAutocomplete(ruleset: Ruleset) = ruleset.speeds.keys
     },
+    Difficulty("difficulty", "Prince", "The name of any difficulty") {
+        override fun getKnownValuesForAutocomplete(ruleset: Ruleset) = ruleset.difficulties.keys
+    },
 
     /** For [UniqueType.CreatesOneImprovement] */
     ImprovementName("improvementName", "Trading Post", "The name of any improvement excluding 'Cancel improvement order'") {
@@ -463,7 +471,15 @@ enum class UniqueParameterType(
 
     /** Used by [UniqueType.OneTimeConsumeResources], [UniqueType.OneTimeProvideResources], [UniqueType.CostsResources], [UniqueType.UnitActionStockpileCost], implementation not centralized */
     StockpiledResource("stockpiledResource", "Mana", "The name of any stockpiled resource") {
-        override fun getKnownValuesForAutocomplete(ruleset: Ruleset) = ruleset.tileResources.filter { it.value.isStockpiled() }.keys
+        override fun getKnownValuesForAutocomplete(ruleset: Ruleset) = ruleset.tileResources.filter { it.value.isStockpiled }.keys
+    },
+
+    /** Used by [UniqueType.OneTimeGainResource], implementation not centralized */
+    Stockpile("stockpile", "Mana", "The name of any stockpiled resource") {
+        override fun getKnownValuesForAutocomplete(ruleset: Ruleset): Set<String> {
+            return ruleset.tileResources.filter { it.value.isStockpiled }.keys +
+                Stat.entries.map { it.name } + SubStat.StoredFood.text + SubStat.GoldenAgePoints.text
+        }
     },
 
     /** Used by [UniqueType.ImprovesResources], implemented by [com.unciv.models.ruleset.tile.TileResource.matchesFilter] */
@@ -493,6 +509,19 @@ enum class UniqueParameterType(
     /** unused at the moment with vanilla rulesets */
     Belief("belief", "God of War", "The name of any belief") {
         override fun getKnownValuesForAutocomplete(ruleset: Ruleset) = ruleset.beliefs.keys
+    },
+    
+    /**Used by [UniqueType.ConditionalCityReligion]*/
+    ReligionFilter("religionFilter", "major") {
+        override val staticKnownValues = setOf("any", "major", "enhanced", "your", "foreign","enemy")
+        override fun isKnownValue(parameterText: String, ruleset: Ruleset): Boolean {
+            return when (parameterText) {
+                in staticKnownValues -> true
+                in ruleset.religions -> true
+                in ruleset.beliefs -> true
+                else -> ruleset.beliefs.values.any { it.hasTagUnique(parameterText) }
+            }
+        }
     },
 
     /** Used by [UniqueType.FreeExtraBeliefs] and its any variant, see ReligionManager.getBeliefsToChooseAt* functions */
@@ -551,7 +580,7 @@ enum class UniqueParameterType(
         override fun getErrorSeverity(parameterText: String, ruleset: Ruleset) = getErrorSeverityForFilter(parameterText, ruleset)
     },
 
-    /** Used by [UniqueType.HiddenWithoutVictoryType], implementation in Civilopedia, OverviewScreen and to exclude e.g. from Quests */
+    /** Used by [UniqueType.ConditionalVictoryEnabled], implementation in Civilopedia, OverviewScreen and to exclude e.g. from Quests */
     VictoryT("victoryType",
         "Domination", "The name of any victory type: 'Cultural', 'Diplomatic', 'Domination', 'Scientific', 'Time' or one of your mod's VictoryTypes.json names"
     ) {

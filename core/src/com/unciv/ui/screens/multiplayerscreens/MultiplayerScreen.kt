@@ -58,8 +58,10 @@ class MultiplayerScreen : PickerScreen() {
 
         setupHelpButton()
         setupRightSideButton()
-
-        game.onlineMultiplayer.requestUpdate()
+        
+        Concurrency.run("Update all multiplayer games") {
+            game.onlineMultiplayer.requestUpdate()
+        }
 
         pickerPane.bottomTable.background = skinStrings.getUiBackground("MultiplayerScreen/BottomTable", tintColor = skinStrings.skinConfig.clearColor)
         pickerPane.topTable.background = skinStrings.getUiBackground("MultiplayerScreen/TopTable", tintColor = skinStrings.skinConfig.clearColor)
@@ -79,13 +81,18 @@ class MultiplayerScreen : PickerScreen() {
 
             // Download missing mods
             Concurrency.runOnNonDaemonThreadPool(LoadGameScreen.downloadMissingMods) {
-                LoadGameScreen.loadMissingMods(missingMods, onModDownloaded = {
-                    Concurrency.runOnGLThread { ToastPopup("[$it] Downloaded!", this@MultiplayerScreen) }
-                },
-                onCompleted = {
-                    RulesetCache.loadRulesets()
-                    Concurrency.runOnGLThread { MultiplayerHelpers.loadMultiplayerGame(this@MultiplayerScreen, selectedGame!!) }
-                })
+                try {
+                    LoadGameScreen.loadMissingMods(missingMods, onModDownloaded = {
+                        Concurrency.runOnGLThread { ToastPopup("[$it] Downloaded!", this@MultiplayerScreen) }
+                    },
+                    onCompleted = {
+                        RulesetCache.loadRulesets()
+                        Concurrency.runOnGLThread { MultiplayerHelpers.loadMultiplayerGame(this@MultiplayerScreen, selectedGame!!) }
+                    })
+                } catch (ex: Exception) {
+                    val (message) = LoadGameScreen.getLoadExceptionMessage(ex)
+                    launchOnGLThread { ToastPopup(message, this@MultiplayerScreen) }
+                }
             }
         }
     }
@@ -112,7 +119,11 @@ class MultiplayerScreen : PickerScreen() {
 
     private fun createRefreshButton(): TextButton {
         val btn = "Refresh list".toTextButton()
-        btn.onClick { game.onlineMultiplayer.requestUpdate() }
+        btn.onClick {
+            Concurrency.run("Update all multiplayer games") {
+                game.onlineMultiplayer.requestUpdate()
+            }
+        }
         return btn
     }
 
@@ -278,6 +289,8 @@ class MultiplayerScreen : PickerScreen() {
         btn.onClick {
             Popup(this).apply {
                 val textField = UncivTextField("Game name", selectedGame!!.name)
+                // slashes in mp names are interpreted as directory separators, so we don't allow them
+                textField.setTextFieldFilter { _, c -> c != '/' && c != '\\' }
                 add(textField).width(stageToShowOn.width / 2).row()
                 val saveButton = "Save".toTextButton()
 

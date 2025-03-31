@@ -25,6 +25,7 @@ import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.models.translations.tr
 import com.unciv.ui.components.MayaCalendar
+import com.unciv.ui.components.extensions.toPercent
 import com.unciv.ui.components.fonts.Fonts
 import com.unciv.utils.withItem
 import kotlin.math.ceil
@@ -96,10 +97,7 @@ class TechManager : IsPartOfGameInfoSerialization {
 
     fun getNumberOfTechsResearched(): Int = techsResearched.size
 
-    fun getOverflowScience(techName: String): Int {
-        return if (overflowScience == 0) 0
-            else (getScienceModifier(techName) * overflowScience).toInt()
-    }
+    fun getOverflowScience(): Int = overflowScience
 
     private fun getScienceModifier(techName: String): Float { // https://forums.civfanatics.com/threads/the-mechanics-of-overflow-inflation.517970/
         val numberOfCivsResearchedThisTech = civInfo.getKnownCivs()
@@ -119,7 +117,10 @@ class TechManager : IsPartOfGameInfoSerialization {
         techCost /= getScienceModifier(techName)
         val mapSizePredef = civInfo.gameInfo.tileMap.mapParameters.mapSize.getPredefinedOrNextSmaller()
         techCost *= mapSizePredef.techCostMultiplier
-        techCost *= 1 + (civInfo.cities.size - 1) * mapSizePredef.techCostPerCityModifier
+        var cityModifier = (civInfo.cities.count { !it.isPuppet } - 1) * mapSizePredef.techCostPerCityModifier
+        for (unique in civInfo.getMatchingUniques(UniqueType.LessTechCostFromCities)) cityModifier *= 1 - unique.params[0].toFloat() / 100
+        for (unique in civInfo.getMatchingUniques(UniqueType.LessTechCost)) techCost *= unique.params[0].toPercent()
+        techCost *= 1 + cityModifier
         return techCost.toInt()
     }
 
@@ -136,7 +137,7 @@ class TechManager : IsPartOfGameInfoSerialization {
     // Was once duplicated as fun scienceSpentOnTech(tech: String): Int
 
     fun remainingScienceToTech(techName: String): Int {
-        val spareScience = if (canBeResearched(techName)) getOverflowScience(techName) else 0
+        val spareScience = if (canBeResearched(techName)) getOverflowScience() else 0
         return costOfTech(techName) - researchOfTech(techName) - spareScience
     }
 
@@ -165,9 +166,9 @@ class TechManager : IsPartOfGameInfoSerialization {
     fun isObsolete(unit: BaseUnit): Boolean = unit.techsThatObsoleteThis().any{ obsoleteTech -> isResearched(obsoleteTech) }
 
     fun isUnresearchable(tech: Technology): Boolean {
-        if (tech.getMatchingUniques(UniqueType.OnlyAvailable, StateForConditionals.IgnoreConditionals).any { !it.conditionalsApply(civInfo) })
+        if (tech.getMatchingUniques(UniqueType.OnlyAvailable, StateForConditionals.IgnoreConditionals).any { !it.conditionalsApply(civInfo.state) })
             return true
-        if (tech.hasUnique(UniqueType.Unavailable, StateForConditionals(civInfo))) return true
+        if (tech.hasUnique(UniqueType.Unavailable, civInfo.state)) return true
         return false
     }
 
@@ -249,7 +250,7 @@ class TechManager : IsPartOfGameInfoSerialization {
                 NotificationIcon.Science)
         }
         if (overflowScience != 0) {
-            finalScienceToAdd += getOverflowScience(currentTechnologyName()!!)
+            finalScienceToAdd += getOverflowScience()
             overflowScience = 0
         }
 
@@ -275,7 +276,7 @@ class TechManager : IsPartOfGameInfoSerialization {
      */
     fun updateResearchProgress() {
         val currentTechnology = currentTechnologyName() ?: return
-        val realOverflow = getOverflowScience(currentTechnology)
+        val realOverflow = getOverflowScience()
         val scienceSpent = researchOfTech(currentTechnology) + realOverflow
         if (scienceSpent >= costOfTech(currentTechnology)) {
             overflowScience = 0
@@ -313,12 +314,11 @@ class TechManager : IsPartOfGameInfoSerialization {
 
         val triggerNotificationText = "due to researching [$techName]"
         for (unique in newTech.uniqueObjects)
-            if (!unique.hasTriggerConditional() && unique.conditionalsApply(StateForConditionals(civInfo)))
+            if (!unique.hasTriggerConditional() && unique.conditionalsApply(civInfo.state))
                 UniqueTriggerActivation.triggerUnique(unique, civInfo, triggerNotificationText = triggerNotificationText)
 
-        for (unique in civInfo.getTriggeredUniques(UniqueType.TriggerUponResearch))
-            if (unique.getModifiers(UniqueType.TriggerUponResearch).any { newTech.matchesFilter(it.params[0]) })
-                UniqueTriggerActivation.triggerUnique(unique, civInfo, triggerNotificationText = triggerNotificationText)
+        for (unique in civInfo.getTriggeredUniques(UniqueType.TriggerUponResearch) { newTech.matchesFilter(it.params[0], civInfo.state) })
+            UniqueTriggerActivation.triggerUnique(unique, civInfo, triggerNotificationText = triggerNotificationText)
 
 
         val revealedResources = getRuleset().tileResources.values.filter { techName == it.revealedBy }
@@ -418,66 +418,66 @@ class TechManager : IsPartOfGameInfoSerialization {
         val previousEra = civInfo.getEra()
         updateEra()
         val currentEra = civInfo.getEra()
-        if (previousEra != currentEra) {
-            if(showNotification) {
-                if(!civInfo.isSpectator())
-                    civInfo.addNotification(
-                        "You have entered the [$currentEra]!",
-                        NotificationCategory.General,
-                        NotificationIcon.Science
+        if (previousEra == currentEra) return
+        
+        if (showNotification) {
+            if (!civInfo.isSpectator())
+                civInfo.addNotification(
+                    "You have entered the [$currentEra]!",
+                    NotificationCategory.General,
+                    NotificationIcon.Science
+                )
+            if (civInfo.isMajorCiv()) {
+                for (knownCiv in civInfo.getKnownCivsWithSpectators()) {
+                    knownCiv.addNotification(
+                        "[${civInfo.civName}] has entered the [$currentEra]!",
+                        NotificationCategory.General, civInfo.civName, NotificationIcon.Science
                     )
-                if (civInfo.isMajorCiv()) {
-                    for (knownCiv in civInfo.getKnownCivsWithSpectators()) {
-                        knownCiv.addNotification(
-                            "[${civInfo.civName}] has entered the [$currentEra]!",
-                            NotificationCategory.General, civInfo.civName, NotificationIcon.Science
-                        )
-                    }
-                }
-                for (policyBranch in getRuleset().policyBranches.values.filter {
-                    it.era == currentEra.name && civInfo.policies.isAdoptable(it)
-                }) {
-                    if (!civInfo.isSpectator())
-                        civInfo.addNotification(
-                            "[${policyBranch.name}] policy branch unlocked!",
-                            PolicyAction(policyBranch.name),
-                            NotificationCategory.General,
-                            NotificationIcon.Culture
-                        )
                 }
             }
-
-            val erasPassed = getRuleset().eras.values
-                .filter { it.eraNumber > previousEra.eraNumber && it.eraNumber <= currentEra.eraNumber }
-                .sortedBy { it.eraNumber }
-
-
-            for (era in erasPassed)
-                for (unique in era.uniqueObjects)
-                    if (!unique.hasTriggerConditional() && unique.conditionalsApply(StateForConditionals(civInfo)))
-                        UniqueTriggerActivation.triggerUnique(
-                            unique,
-                            civInfo,
-                            triggerNotificationText = "due to entering the [${era.name}]"
-                        )
-
-            val eraNames = erasPassed.map { it.name }.toHashSet()
-            for (unique in civInfo.getTriggeredUniques(UniqueType.TriggerUponEnteringEra))
-                for (eraName in eraNames)
-                    if (unique.modifiers.any { it.type == UniqueType.TriggerUponEnteringEra && it.params[0] == eraName })
-                        UniqueTriggerActivation.triggerUnique(
-                            unique,
-                            civInfo,
-                            triggerNotificationText = "due to entering the [$eraName]"
-                        )
-
-            // The unfiltered version
-            for (unique in civInfo.getTriggeredUniques(UniqueType.TriggerUponEnteringEraUnfiltered))
-                UniqueTriggerActivation.triggerUnique(
-                    unique,
-                    civInfo,
-                    triggerNotificationText = "due to entering the [${currentEra.name}]")
+            
+            for (policyBranch in getRuleset().policyBranches.values.filter {
+                it.era == currentEra.name && civInfo.policies.isAdoptable(it)
+            }) {
+                if (!civInfo.isSpectator())
+                    civInfo.addNotification(
+                        "[${policyBranch.name}] policy branch unlocked!",
+                        PolicyAction(policyBranch.name),
+                        NotificationCategory.General,
+                        NotificationIcon.Culture
+                    )
+            }
         }
+
+        val erasPassed = getRuleset().eras.values
+            .filter { it.eraNumber > previousEra.eraNumber && it.eraNumber <= currentEra.eraNumber }
+            .sortedBy { it.eraNumber }
+
+        for (era in erasPassed)
+            for (unique in era.uniqueObjects)
+                if (!unique.hasTriggerConditional() && unique.conditionalsApply(civInfo.state))
+                    UniqueTriggerActivation.triggerUnique(
+                        unique,
+                        civInfo,
+                        triggerNotificationText = "due to entering the [${era.name}]"
+                    )
+
+        val eraNames = erasPassed.map { it.name }.toHashSet()
+        for (unique in civInfo.getTriggeredUniques(UniqueType.TriggerUponEnteringEra))
+            for (eraName in eraNames)
+                if (unique.getModifiers(UniqueType.TriggerUponEnteringEra).any { it.params[0] == eraName })
+                    UniqueTriggerActivation.triggerUnique(
+                        unique,
+                        civInfo,
+                        triggerNotificationText = "due to entering the [$eraName]"
+                    )
+
+        // The unfiltered version
+        for (unique in civInfo.getTriggeredUniques(UniqueType.TriggerUponEnteringEraUnfiltered))
+            UniqueTriggerActivation.triggerUnique(
+                unique,
+                civInfo,
+                triggerNotificationText = "due to entering the [${currentEra.name}]")
     }
 
     private fun updateEra() {

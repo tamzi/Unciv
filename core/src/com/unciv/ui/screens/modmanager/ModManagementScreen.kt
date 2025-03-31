@@ -286,7 +286,11 @@ class ModManagementScreen private constructor(
                 launchOnGLThread {
                     ToastPopup("Could not download mod list", this@ModManagementScreen)
                 }
-                Gdx.app.clipboard.contents = ex.stackTraceToString()
+                try {
+                    // If it's too large Android won't let you copy, hence the guardrails
+                    Gdx.app.clipboard.contents = ex.stackTraceToString()
+                } catch (_:Exception) {}
+                
                 runningSearchJob = null
                 return@run
             }
@@ -414,15 +418,19 @@ class ModManagementScreen private constructor(
             actualDownloadButton.onClick {
                 actualDownloadButton.setText("Downloading...".tr())
                 actualDownloadButton.disable()
-                val repo = GithubAPI.Repo.parseUrl(textField.text)
-                if (repo == null) {
-                    ToastPopup("«RED»{Invalid link!}«»", this@ModManagementScreen)
-                    actualDownloadButton.setText("Download".tr())
-                    actualDownloadButton.enable()
-                } else
-                    downloadMod(repo, {
-                        actualDownloadButton.setText("{Downloading...} ${it}%".tr())
-                    }) { popup.close() }
+                Concurrency.run {
+                    val repo = GithubAPI.Repo.parseUrl(textField.text)
+                    if (repo == null) {
+                        Concurrency.runOnGLThread {
+                            ToastPopup("«RED»{Invalid link!}«»", this@ModManagementScreen)
+                            actualDownloadButton.setText("Download".tr())
+                            actualDownloadButton.enable()
+                        }
+                    } else
+                        downloadMod(repo, {
+                            actualDownloadButton.setText("{Downloading...} ${it}%".tr())
+                        }) { popup.close() }
+                }
             }
             popup.add(actualDownloadButton).row()
             popup.addCloseButton()

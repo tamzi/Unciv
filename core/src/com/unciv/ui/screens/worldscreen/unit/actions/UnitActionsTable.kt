@@ -154,6 +154,7 @@ class UnitActionsTable(val worldScreen: WorldScreen) : Table() {
 
         val fontColor = if (unitAction.isCurrentAction) Color.YELLOW else Color.WHITE
         val actionButton = IconTextButton(unitAction.title, icon, fontColor = fontColor)
+        actionButton.labelCell.padTop(0f) // aligned with icon 
 
         if (unitAction.type == UnitActionType.Promote && unitAction.action != null)
             actionButton.color = Color.GREEN.brighten(0.5f)
@@ -182,6 +183,6 @@ class UnitActionsTable(val worldScreen: WorldScreen) : Table() {
         if (unit.isDestroyed || 
             unitAction.type.isSkippingToNextUnit && (!unit.isMoving() || !unit.hasMovement()))
             worldScreen.switchToNextUnit()
-        else worldScreen.bottomUnitTable.selectedUnitHasChanged = true
+        else worldScreen.bottomUnitTable.shouldUpdate = true
     }
 }

@@ -19,12 +19,14 @@ import kotlin.math.roundToInt
 interface IConstruction : INamed {
     fun isBuildable(cityConstructions: CityConstructions): Boolean
     fun shouldBeDisplayed(cityConstructions: CityConstructions): Boolean
+    /** We can't call this getMatchingUniques because then it would conflict with IHasUniques */
+    fun getMatchingUniquesNotConflicting(uniqueType: UniqueType, stateForConditionals: StateForConditionals) = sequenceOf<Unique>()
+    
     /** Gets *per turn* resource requirements - does not include immediate costs for stockpiled resources.
      * Uses [state] to determine which civ or city this is built for*/
     fun getResourceRequirementsPerTurn(state: StateForConditionals? = null): Counter<String>
     fun requiredResources(state: StateForConditionals = StateForConditionals.EmptyState): Set<String>
-    /** We can't call this getMatchingUniques because then it would conflict with IHasUniques */
-    fun getMatchingUniquesNotConflicting(uniqueType: UniqueType, stateForConditionals: StateForConditionals) = sequenceOf<Unique>()
+    fun getStockpiledResourceRequirements(state: StateForConditionals): Counter<String>
 }
 
 interface INonPerpetualConstruction : IConstruction, INamed, IHasUniques {
@@ -40,9 +42,6 @@ interface INonPerpetualConstruction : IConstruction, INamed, IHasUniques {
     fun getStatBuyCost(city: City, stat: Stat): Int?
     fun getRejectionReasons(cityConstructions: CityConstructions): Sequence<RejectionReason>
 
-    /** Returns whether was successful - can fail for units if we can't place them */
-    fun postBuildEvent(cityConstructions: CityConstructions, boughtWith: Stat? = null): Boolean  // Yes I'm hilarious.
-
     /** Only checks if it has the unique to be bought with this stat, not whether it is purchasable at all */
     fun canBePurchasedWithStat(city: City?, stat: Stat): Boolean {
         return canBePurchasedWithStatReasons(city, stat).purchasable
@@ -50,7 +49,7 @@ interface INonPerpetualConstruction : IConstruction, INamed, IHasUniques {
 
     /** Only checks if it has the unique to be bought with this stat, not whether it is purchasable at all */
     fun canBePurchasedWithStatReasons(city: City?, stat: Stat): PurchaseReason {
-        val stateForConditionals = StateForConditionals(city?.civ, city)
+        val stateForConditionals = city?.state ?: StateForConditionals.EmptyState
         if (stat == Stat.Production || stat == Stat.Happiness) return PurchaseReason.Invalid
         if (hasUnique(UniqueType.CannotBePurchased, stateForConditionals)) return PurchaseReason.Unpurchasable
         // Can be purchased with [Stat] [cityFilter]
@@ -92,7 +91,7 @@ interface INonPerpetualConstruction : IConstruction, INamed, IHasUniques {
     }
 
     fun getBaseBuyCost(city: City, stat: Stat): Float? {
-        val conditionalState = StateForConditionals(civInfo = city.civ, city = city)
+        val conditionalState = city.state
 
         // Can be purchased for [amount] [Stat] [cityFilter]
         val lowestCostUnique = getMatchingUniques(UniqueType.CanBePurchasedForAmountStat, conditionalState)
@@ -119,6 +118,16 @@ interface INonPerpetualConstruction : IConstruction, INamed, IHasUniques {
     override fun requiredResources(state: StateForConditionals): Set<String> {
         return getResourceRequirementsPerTurn(state).keys +
                 getMatchingUniques(UniqueType.CostsResources, state).map { it.params[1] }
+    }
+    
+    override fun getStockpiledResourceRequirements(state: StateForConditionals): Counter<String> {
+        val counter = Counter<String>()
+        for (unique in getMatchingUniquesNotConflicting(UniqueType.CostsResources, state)){
+            var amount = unique.params[0].toInt()
+            if (unique.isModifiedByGameSpeed()) amount = (amount * state.gameInfo!!.speed.modifier).toInt()
+            counter.add(unique.params[1], amount)
+        }
+        return counter
     }
 }
 
@@ -273,6 +282,7 @@ open class PerpetualConstruction(override var name: String, val description: Str
 
     override fun shouldBeDisplayed(cityConstructions: CityConstructions) = isBuildable(cityConstructions)
     open fun getProductionTooltip(city: City, withIcon: Boolean = false) : String = ""
+    override fun getStockpiledResourceRequirements(state: StateForConditionals) = Counter.ZERO
 
     companion object {
         val science = PerpetualStatConversion(Stat.Science)
@@ -310,7 +320,7 @@ open class PerpetualStatConversion(val stat: Stat) :
         if (stat == Stat.Faith && !city.civ.gameInfo.isReligionEnabled())
             return false
 
-        val stateForConditionals = StateForConditionals(city.civ, city, tile = city.getCenterTile())
+        val stateForConditionals = city.state
         return city.civ.getMatchingUniques(UniqueType.EnablesCivWideStatProduction, stateForConditionals)
             .any { it.params[0] == stat.name }
     }

@@ -81,7 +81,7 @@ class ModConstants {
 
     // MapGenerator.spreadAncientRuins: number of ruins = suitable tile count * this
     var ancientRuinCountMultiplier = 0.02f
-    // MapGenerator.spawnIce: spawn Ice where T < this, with T calculated from temperatureExtremeness, latitude and perlin noise.
+    // MapGenerator.spawnIce: spawn Ice where T < this, with T calculated from temperatureintensity, latitude and perlin noise.
     var spawnIceBelowTemperature = -0.8f
     // MapGenerator.spawnLakesAndCoasts: Water bodies up to this tile count become Lakes
     var maxLakeSize = 10
@@ -105,12 +105,24 @@ class ModConstants {
     var baseTurnsUntilRevolt = 4
     var cityStateElectionTurns = 15
 
+    // City State Tribute: maximum points from Force ranking towards reaching Tribute willingness threshold
+    var tributeGlobalModifier = 100 // 75 in BNW
+    var tributeLocalModifier = 100 // 125 in BNW
+
     // Espionage
     var maxSpyRank = 3
     // How much of a skill bonus each rank gives.
-    // Rank 0 is 100%, rank 1 is 130%, and so on for stealing technology.
+    // Rank 0 is 100, rank 1 is 130, and so on.
     // Half as much for a coup.
     var spyRankSkillPercentBonus = 30
+    // Rank 2 is +25% tech steal rate, rank 3 is +50%, and so on
+    var spyRankStealPercentBonus = 25
+    // Steal cost equal to 125% of the most expensive stealable tech
+    var spyTechStealCostModifier = 1.25f
+    
+    // Score value of things
+    var scoreFromPopulation = 3 // 4 in BNW
+    var scoreFromWonders = 40 // 25 in BNW
 
     // UI: If set >= 0, ImprovementPicker will silently skip improvements whose tech requirement is more advanced than your current Era + this
     var maxImprovementTechErasForward = -1

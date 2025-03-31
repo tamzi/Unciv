@@ -39,8 +39,6 @@ class CityFounder {
 
         val startingEra = civInfo.gameInfo.gameParameters.startingEra
 
-        addStartingBuildings(city, civInfo, startingEra)
-
         city.expansion.reset()
 
         city.tryUpdateRoadStatus()
@@ -85,6 +83,8 @@ class CityFounder {
 
         triggerCitiesSettledNearOtherCiv(city)
         civInfo.gameInfo.cityDistances.setDirty()
+
+        addStartingBuildings(city, civInfo, startingEra)
 
         for (unique in civInfo.getTriggeredUniques(UniqueType.TriggerUponFoundingCity,
             StateForConditionals(civInfo, city, unit)
@@ -205,7 +205,7 @@ class CityFounder {
     private fun addStartingBuildings(city: City, civInfo: Civilization, startingEra: String) {
         val ruleset = civInfo.gameInfo.ruleset
         if (civInfo.cities.size == 1) {
-            val capitalCityIndicator = city.capitalCityIndicator()
+            val capitalCityIndicator = civInfo.capitalCityIndicator(city)
             if (capitalCityIndicator != null)
                 city.cityConstructions.addBuilding(capitalCityIndicator, tryAddFreeBuildings = false)
         }

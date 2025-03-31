@@ -21,12 +21,18 @@ interface IHasUniques : INamed {
     val uniqueMap: UniqueMap
 
     fun uniqueObjectsProvider(): List<Unique> {
+        return uniqueObjectsProvider(uniques)
+    }
+    fun uniqueMapProvider(): UniqueMap {
+        return uniqueMapProvider(uniqueObjects)
+    }
+    fun uniqueObjectsProvider(uniques: List<String>): List<Unique> {
         if (uniques.isEmpty()) return emptyList()
         return uniques.map { Unique(it, getUniqueTarget(), name) }
     }
-    fun uniqueMapProvider(): UniqueMap {
+    fun uniqueMapProvider(uniqueObjects: List<Unique>): UniqueMap {
         val newUniqueMap = UniqueMap()
-        if (uniques.isNotEmpty())
+        if (uniqueObjects.isNotEmpty())
             newUniqueMap.addUniques(uniqueObjects)
         return newUniqueMap
     }
@@ -38,9 +44,15 @@ interface IHasUniques : INamed {
 
     fun getMatchingUniques(uniqueType: UniqueType, state: StateForConditionals = StateForConditionals.EmptyState) =
         uniqueMap.getMatchingUniques(uniqueType, state)
+
+    fun getMatchingUniques(uniqueTag: String, state: StateForConditionals = StateForConditionals.EmptyState) =
+        uniqueMap.getMatchingUniques(uniqueTag, state)
     
     fun hasUnique(uniqueType: UniqueType, state: StateForConditionals? = null) =
         uniqueMap.hasMatchingUnique(uniqueType, state ?: StateForConditionals.EmptyState)
+
+    fun hasUnique(uniqueTag: String, state: StateForConditionals? = null) =
+        uniqueMap.hasMatchingUnique(uniqueTag, state ?: StateForConditionals.EmptyState)
 
     fun hasTagUnique(tagUnique: String) =
         uniqueMap.hasTagUnique(tagUnique)
@@ -100,6 +112,7 @@ interface IHasUniques : INamed {
             UniqueType.ConditionalVictoryDisabled,
             UniqueType.ConditionalVictoryEnabled,
             UniqueType.ConditionalSpeed,
+            UniqueType.ConditionalDifficulty,
             UniqueType.ConditionalReligionEnabled,
             UniqueType.ConditionalReligionDisabled,
             UniqueType.ConditionalEspionageEnabled,
@@ -121,12 +134,6 @@ interface IHasUniques : INamed {
                                 && !Conditionals.conditionalApplies(null, it, stateForConditionals) } })
             return true
         
-        if (!gameInfo.isReligionEnabled() && hasUnique(UniqueType.HiddenWithoutReligion)) return true
-        if (!gameInfo.isEspionageEnabled() && hasUnique(UniqueType.HiddenWithoutEspionage)) return true
-        
-        
-        if (getMatchingUniques(UniqueType.HiddenWithoutVictoryType)
-            .any { it.params[0] !in gameInfo.gameParameters.victoryTypes }) return true
         return false
     }
 
@@ -146,7 +153,7 @@ interface IHasUniques : INamed {
     ): Boolean {
         if (hasUnique(UniqueType.HiddenFromCivilopedia)) return true
         if (gameInfo != null && isUnavailableBySettings(gameInfo)) return true
-        if (gameInfo == null && hasUnique(UniqueType.HiddenWithoutReligion) && ruleset!!.beliefs.isEmpty()) return true
+        if (gameInfo == null && ruleset!!.beliefs.isEmpty()) return true
         return false
     }
     /** Overload of [isHiddenFromCivilopedia] for use in actually game-agnostic parts of Civilopedia */

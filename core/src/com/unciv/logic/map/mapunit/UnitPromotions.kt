@@ -5,6 +5,7 @@ import com.unciv.models.ruleset.unique.StateForConditionals
 import com.unciv.models.ruleset.unique.UniqueTriggerActivation
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.Promotion
+import com.unciv.ui.components.extensions.toPercent
 
 class UnitPromotions : IsPartOfGameInfoSerialization {
     // Having this as mandatory constructor parameter would be safer, but this class is part of a
@@ -48,11 +49,24 @@ class UnitPromotions : IsPartOfGameInfoSerialization {
     }
 
     /** @return the XP points needed to "buy" the next promotion. 10, 30, 60, 100, 150,... */
-    fun xpForNextPromotion() = (numberOfPromotions + 1) * 10
-
+    fun xpForNextPromotion() = Math.round(baseXpForPromotionNumber(numberOfPromotions+1) * promotionCostModifier())
+    
     /** @return the XP points needed to "buy" the next [count] promotions. */
-    fun xpForNextNPromotions(count: Int) = (1..count).sumOf { (numberOfPromotions + it) * 10 }
+    fun xpForNextNPromotions(count: Int) = Math.round((1..count).sumOf { 
+        baseXpForPromotionNumber(numberOfPromotions+count)} * promotionCostModifier() )
 
+    private fun baseXpForPromotionNumber(numberOfPromotions: Int) = (numberOfPromotions) * 10
+    
+    private fun promotionCostModifier(): Float {
+       
+        var totalPromotionCostModifier = 1f
+        for (unique in unit.civ.getMatchingUniques(UniqueType.XPForPromotionModifier)) {
+            totalPromotionCostModifier *= unique.params[0].toPercent()
+        }
+        // base case if you don't have any the unique that reduce or higher the promotion cost
+        return totalPromotionCostModifier
+    }
+    
     /** @return Total XP including that already "spent" on promotions */
     fun totalXpProduced() = XP + (numberOfPromotions * (numberOfPromotions + 1)) * 5
 
@@ -75,11 +89,10 @@ class UnitPromotions : IsPartOfGameInfoSerialization {
 
             for (unique in unit.getTriggeredUniques(UniqueType.TriggerUponPromotion))
                 UniqueTriggerActivation.triggerUnique(unique, unit)
-            
-            for (unique in promotion.getMatchingUniques(UniqueType.TriggerUponPromotionGain))
-                if (unique.params[0] == promotionName)
-                    UniqueTriggerActivation.triggerUnique(unique, unit)
         }
+
+        for (unique in unit.getTriggeredUniques(UniqueType.TriggerUponPromotionGain){ it.params[0] == promotionName })
+            UniqueTriggerActivation.triggerUnique(unique, unit)
 
         if (!promotion.hasUnique(UniqueType.SkipPromotion))
             promotions.add(promotionName)
@@ -105,15 +118,14 @@ class UnitPromotions : IsPartOfGameInfoSerialization {
             unit.updateUniques()
             unit.updateVisibleTiles()
             
-            for (unique in unit.getMatchingUniques(UniqueType.TriggerUponPromotionLoss))
-                if (unique.params[0] == promotionName)
-                    UniqueTriggerActivation.triggerUnique(unique, unit)
+            for (unique in unit.getTriggeredUniques(UniqueType.TriggerUponPromotionLoss){ it.params[0] == promotionName })
+                UniqueTriggerActivation.triggerUnique(unique, unit)
         }
     }
 
     private fun doDirectPromotionEffects(promotion: Promotion) {
         for (unique in promotion.uniqueObjects)
-            if (unique.conditionalsApply(StateForConditionals(civInfo = unit.civ, unit = unit))
+            if (unique.conditionalsApply(unit.cache.state)
                     && !unique.hasTriggerConditional())
                 UniqueTriggerActivation.triggerUnique(unique, unit, triggerNotificationText = "due to our [${unit.name}] being promoted")
     }
@@ -130,7 +142,7 @@ class UnitPromotions : IsPartOfGameInfoSerialization {
         if (unit.type.name !in promotion.unitTypes) return false
         if (promotion.prerequisites.isNotEmpty() && promotion.prerequisites.none { it in promotions }) return false
 
-        val stateForConditionals = StateForConditionals(unit.civ, unit = unit)
+        val stateForConditionals = unit.cache.state
         if (promotion.hasUnique(UniqueType.Unavailable, stateForConditionals)) return false
         if (promotion.getMatchingUniques(UniqueType.OnlyAvailable, StateForConditionals.IgnoreConditionals)
             .any { !it.conditionalsApply(stateForConditionals) }) return false

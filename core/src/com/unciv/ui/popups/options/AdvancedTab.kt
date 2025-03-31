@@ -51,9 +51,11 @@ class AdvancedTab(
     init {
         pad(10f)
         defaults().pad(5f)
+        
+        addMaxAutosavesStored()
 
         addAutosaveTurnsSelectBox()
-        addSeparator(Color.GRAY)
+        addSeparator()
 
         if (Display.hasCutout())
             addCutoutCheckbox()
@@ -63,14 +65,14 @@ class AdvancedTab(
 
         addFontFamilySelect(onFontChange)
         addFontSizeMultiplier(onFontChange)
-        addSeparator(Color.GRAY)
+        addSeparator()
 
         addMaxZoomSlider()
 
         addEasterEggsCheckBox()
 
         addEnlargeNotificationsCheckBox()
-        addSeparator(Color.GRAY)
+        addSeparator()
 
         addSetUserId()
 
@@ -92,7 +94,22 @@ class AdvancedTab(
             optionsPopup.reopenAfterDisplayLayoutChange()
         }
     }
-
+    
+    private fun addMaxAutosavesStored() {
+        add("Number of autosave files stored".toLabel()).left().fillX()
+        
+        val maxAutosavesStoredSelectBox = SelectBox<Int>(skin)
+        val maxAutosavesStoredArray = Array<Int>()
+        maxAutosavesStoredArray.addAll(1,2,5,10,15,20,35,50,100,150,200,250)
+        maxAutosavesStoredSelectBox.items = maxAutosavesStoredArray
+        maxAutosavesStoredSelectBox.selected = settings.maxAutosavesStored
+        
+        add(maxAutosavesStoredSelectBox).pad(10f).row()
+        
+        maxAutosavesStoredSelectBox.onChange {
+            settings.maxAutosavesStored = maxAutosavesStoredSelectBox.selected
+        }
+    }
 
     private fun addAutosaveTurnsSelectBox() {
         add("Turns between autosaves".toLabel()).left().fillX()
@@ -352,13 +369,10 @@ class AdvancedTab(
     }
 
     private fun addEasterEggsCheckBox() {
-        val checkbox = "Enable Easter Eggs".toCheckBox(settings.enableEasterEggs) { settings.enableEasterEggs = it }
-        add(checkbox).colspan(2).row()
+        optionsPopup.addCheckbox(this, "Enable Easter Eggs", settings.enableEasterEggs) { settings.enableEasterEggs = it }
     }
 
     private fun addEnlargeNotificationsCheckBox() {
-        val checkbox = "Enlarge selected notifications"
-            .toCheckBox(settings.enlargeSelectedNotification) { settings.enlargeSelectedNotification = it }
-        add(checkbox).colspan(2).row()
+        optionsPopup.addCheckbox(this, "Enlarge selected notifications", settings.enlargeSelectedNotification) { settings.enlargeSelectedNotification = it }
     }
 }

@@ -4,7 +4,6 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.math.Interpolation
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.scenes.scene2d.Actor
-import com.badlogic.gdx.scenes.scene2d.Group
 import com.badlogic.gdx.scenes.scene2d.actions.Actions
 import com.badlogic.gdx.scenes.scene2d.actions.FloatAction
 import com.badlogic.gdx.scenes.scene2d.actions.RelativeTemporalAction
@@ -23,6 +22,7 @@ import com.unciv.ui.components.tilegroups.TileSetStrings
 import com.unciv.ui.components.widgets.ShadowedLabel
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.screens.worldscreen.WorldScreen
+import com.unciv.utils.Concurrency
 
 
 object BattleTableHelpers {
@@ -144,22 +144,31 @@ object BattleTableHelpers {
         }
     }
 
+    fun WorldScreen.battleAnimationDeferred(
+        attacker: ICombatant, damageToAttacker: Int,
+        defender: ICombatant, damageToDefender: Int
+    ){
+        // This ensures that we schedule the animation to happen AFTER the worldscreen.update(), 
+        //    where the spriteGroup of the attacker is created on the tile it moves to 
+        Concurrency.runOnGLThread { battleAnimation(attacker, damageToAttacker, defender, damageToDefender) }
+    }
 
-    fun WorldScreen.battleAnimation(
+    private fun WorldScreen.battleAnimation(
         attacker: ICombatant, damageToAttacker: Int,
         defender: ICombatant, damageToDefender: Int
     ) {
         fun getMapActorsForCombatant(combatant: ICombatant): Sequence<Actor> =
-                sequence {
-                    val tileGroup = mapHolder.tileGroups[combatant.getTile()]!!
-                    if (combatant.isCity()) {
-                        val icon = tileGroup.layerMisc.improvementIcon
-                        if (icon != null) yield (icon)
-                    } else if (!combatant.isAirUnit()) {
-                        val slot = if (combatant.isCivilian()) 0 else 1
-                        yieldAll((tileGroup.layerUnitArt.getChild(slot) as Group).children)
-                    }
+            sequence {
+                val tileGroup = mapHolder.tileGroups[combatant.getTile()]!!
+                if (combatant.isCity()) {
+                    val icon = tileGroup.layerImprovement.improvementIcon
+                    if (icon != null) yield (icon)
+                } else if (!combatant.isAirUnit()) {
+                    val slot = tileGroup.layerUnitArt.getSpriteSlot((combatant as MapUnitCombatant).unit)
+                    if (slot != null) yieldAll(slot.spriteGroup.children)
                 }
+            }
+
 
         val actorsToFlashRed =
                 sequence {
@@ -217,32 +226,55 @@ object BattleTableHelpers {
         container.addAction(DamageLabelAnimation(container))
     }
 
-    fun getHealthBar(maxHealth: Int, currentHealth: Int, maxRemainingHealth: Int, minRemainingHealth: Int): Table {
+    fun getHealthBar(maxHealth: Int, currentHealth: Int, maxRemainingHealth: Int, minRemainingHealth: Int, forDefender: Boolean = false): Table {
         val healthBar = Table()
-        val totalWidth = 100f
+        val totalWidth = 120f
         fun addHealthToBar(image: Image, amount: Int) {
             val width = totalWidth * amount / maxHealth
-            healthBar.add(image).size(width.coerceIn(0f, totalWidth),3f)
+            healthBar.add(image).size(width.coerceIn(0f, totalWidth),4f)
         }
 
+        fun animateHealth(health: Image, healthDecreaseWidth: Float, move: Float) {
+            health.addAction(Actions.sequence(
+                Actions.sizeBy(healthDecreaseWidth, 0f),
+                Actions.sizeBy(-healthDecreaseWidth, 0f, 0.5f)
+            ))
+            health.addAction(Actions.sequence(
+                Actions.moveBy(-move, 0f),
+                Actions.moveBy(move, 0f, 0.5f)
+            ))
+        }
+        
         val damagedHealth = ImageGetter.getDot(Color.FIREBRICK)
+        val remainingHealthDot = ImageGetter.getDot(Color.GREEN)
+        val maybeDamagedHealth = ImageGetter.getDot(Color.ORANGE)
+        val missingHealth = ImageGetter.getDot(ImageGetter.CHARCOAL)
         if (UncivGame.Current.settings.continuousRendering) {
-            damagedHealth.addAction(Actions.forever(Actions.sequence(
-                Actions.color(Color.BLACK, 0.7f),
-                Actions.color(Color.FIREBRICK, 0.7f)
+            maybeDamagedHealth.addAction(Actions.forever(Actions.sequence(
+                Actions.color(Color.FIREBRICK, 0.7f),
+                Actions.color(Color.ORANGE, 0.7f)
             )))
         }
+        
+        val healthDecreaseWidth = (currentHealth - minRemainingHealth) * totalWidth / 100 // Used for animation only
+        if (forDefender) {
+            addHealthToBar(missingHealth, maxHealth - currentHealth)
+            addHealthToBar(damagedHealth, currentHealth - maxRemainingHealth)
+            addHealthToBar(maybeDamagedHealth, maxRemainingHealth - minRemainingHealth)
+            addHealthToBar(remainingHealthDot, minRemainingHealth)
 
-        val maybeDamagedHealth = ImageGetter.getDot(Color.ORANGE)
+            remainingHealthDot.toFront()
+            animateHealth(remainingHealthDot, healthDecreaseWidth, healthDecreaseWidth)
+        }
+        else {
+            addHealthToBar(remainingHealthDot, minRemainingHealth)
+            addHealthToBar(maybeDamagedHealth, maxRemainingHealth - minRemainingHealth)
+            addHealthToBar(damagedHealth, currentHealth - maxRemainingHealth)
+            addHealthToBar(missingHealth, maxHealth - currentHealth)
 
-        val remainingHealthDot = ImageGetter.getWhiteDot()
-        remainingHealthDot.color = Color.GREEN
-
-        addHealthToBar(ImageGetter.getDot(Color.BLACK), maxHealth - currentHealth)
-        addHealthToBar(damagedHealth, currentHealth - maxRemainingHealth)
-        addHealthToBar(maybeDamagedHealth, maxRemainingHealth - minRemainingHealth)
-        addHealthToBar(remainingHealthDot, minRemainingHealth)
-
+            remainingHealthDot.toFront()
+            animateHealth(remainingHealthDot, healthDecreaseWidth, 0f)
+        }
         healthBar.pack()
         return healthBar
     }

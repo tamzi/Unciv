@@ -117,6 +117,12 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Triggerable
 
+??? example  "Instantly gain [amount] [stockpile]"
+	Example: "Instantly gain [3] [Mana]"
+
+	This unique's effect can be modified with &lt;(modified by game speed)&gt;
+	Applicable to: Triggerable
+
 ??? example  "Gain [amount] [stat]"
 	Example: "Gain [3] [Culture]"
 
@@ -126,6 +132,7 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 ??? example  "Gain [amount]-[amount] [stat]"
 	Example: "Gain [3]-[3] [Culture]"
 
+	This unique's effect can be modified with &lt;(modified by game speed)&gt;
 	Applicable to: Triggerable
 
 ??? example  "Gain enough Faith for a Pantheon"
@@ -403,8 +410,8 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Global
 
-??? example  "Can spend Gold to annex or puppet a City-State that has been your ally for [amount] turns."
-	Example: "Can spend Gold to annex or puppet a City-State that has been your ally for [3] turns."
+??? example  "Can spend Gold to annex or puppet a City-State that has been your Ally for [amount] turns"
+	Example: "Can spend Gold to annex or puppet a City-State that has been your Ally for [3] turns"
 
 	Applicable to: Global
 
@@ -576,6 +583,11 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Global, Unit
 
+??? example  "Can build [improvementFilter] improvements at a [relativeAmount]% rate"
+	Example: "Can build [All Road] improvements at a [+20]% rate"
+
+	Applicable to: Global, Unit
+
 ??? example  "Gain a free [buildingName] [cityFilter]"
 	Free buildings CANNOT be self-removing - this leads to an endless loop of trying to add the building
 	Example: "Gain a free [Library] [in all cities]"
@@ -614,6 +626,16 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 ??? example  "[relativeAmount]% Culture cost of adopting new Policies"
 	Example: "[+20]% Culture cost of adopting new Policies"
+
+	Applicable to: Global
+
+??? example  "Each city founded increases Science cost of Technologies [relativeAmount]% less than normal"
+	Example: "Each city founded increases Science cost of Technologies [+20]% less than normal"
+
+	Applicable to: Global
+
+??? example  "[relativeAmount]% Science cost of researching new Technologies"
+	Example: "[+20]% Science cost of researching new Technologies"
 
 	Applicable to: Global
 
@@ -692,8 +714,8 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Due to performance considerations, this unique is cached, thus conditionals that may change within a turn may not work.
 	Applicable to: Global
 
-??? example  "New [baseUnitFilter] units start with [amount] Experience [cityFilter]"
-	Example: "New [Melee] units start with [3] Experience [in all cities]"
+??? example  "New [baseUnitFilter] units start with [amount] XP [cityFilter]"
+	Example: "New [Melee] units start with [3] XP [in all cities]"
 
 	Applicable to: Global, FollowerBelief
 
@@ -706,6 +728,11 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Example: "[Wounded] Units adjacent to this city heal [3] HP per turn when healing"
 
 	Applicable to: Global, FollowerBelief
+
+??? example  "[relativeAmount]% XP required for promotions"
+	Example: "[+20]% XP required for promotions"
+
+	Applicable to: Global
 
 ??? example  "[relativeAmount]% City Strength from defensive buildings"
 	Example: "[+20]% City Strength from defensive buildings"
@@ -962,9 +989,6 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 ??? example  "Can only heal by pillaging"
 	Applicable to: Global, Unit
 
-??? example  "Defense bonus when embarked"
-	Applicable to: Global, Unit
-
 ??? example  "[relativeAmount]% maintenance costs"
 	Example: "[+20]% maintenance costs"
 
@@ -975,18 +999,18 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Global, Unit
 
-??? example  "Earn [amount]% of the damage done to [combatantFilter] units as [civWideStat]"
-	Example: "Earn [3]% of the damage done to [City] units as [Gold]"
+??? example  "Earn [amount]% of the damage done to [combatantFilter] units as [stockpile]"
+	Example: "Earn [3]% of the damage done to [City] units as [Mana]"
 
 	Applicable to: Global, Unit
 
-??? example  "Upon capturing a city, receive [amount] times its [stat] production as [civWideStat] immediately"
-	Example: "Upon capturing a city, receive [3] times its [Culture] production as [Gold] immediately"
+??? example  "Upon capturing a city, receive [amount] times its [stat] production as [stockpile] immediately"
+	Example: "Upon capturing a city, receive [3] times its [Culture] production as [Mana] immediately"
 
 	Applicable to: Global, Unit
 
-??? example  "Earn [amount]% of killed [mapUnitFilter] unit's [costOrStrength] as [civWideStat]"
-	Example: "Earn [3]% of killed [Wounded] unit's [Cost] as [Gold]"
+??? example  "Earn [amount]% of killed [mapUnitFilter] unit's [costOrStrength] as [stockpile]"
+	Example: "Earn [3]% of killed [Wounded] unit's [Cost] as [Mana]"
 
 	Applicable to: Global, Unit
 
@@ -1018,9 +1042,6 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Global, Unit
 
 ## Nation uniques
-??? example  "Will not be chosen for new games"
-	Applicable to: Nation
-
 ??? example  "Starts with [tech]"
 	Example: "Starts with [Agriculture]"
 
@@ -1044,6 +1065,9 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 ??? example  "Will not be displayed in Civilopedia"
 	Applicable to: Nation, Tech, Policy, FounderBelief, FollowerBelief, Building, Unit, UnitType, Promotion, Terrain, Improvement, Resource, Ruins, Speed, EventChoice
+
+??? example  "Will not be chosen for new games"
+	Applicable to: Nation
 
 ??? example  "Comment [comment]"
 	Allows displaying arbitrary text in a Unique listing. Only the text within the '[]' brackets will be displayed, the rest serves to allow Ruleset validation to recognize the intent.
@@ -1342,8 +1366,8 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Global, FollowerBelief
 
-??? example  "New [baseUnitFilter] units start with [amount] Experience [cityFilter]"
-	Example: "New [Melee] units start with [3] Experience [in all cities]"
+??? example  "New [baseUnitFilter] units start with [amount] XP [cityFilter]"
+	Example: "New [Melee] units start with [3] XP [in all cities]"
 
 	Applicable to: Global, FollowerBelief
 
@@ -1381,8 +1405,8 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Meant to be used together with conditionals, like "Only available <after adopting [policy]> <while the empire is happy>". Only allows Building when ALL conditionals are met. Will also block Upgrade and Transform actions. See also CanOnlyBeBuiltWhen
 	Applicable to: Tech, Policy, FounderBelief, FollowerBelief, Building, Unit, Promotion, Improvement, Ruins, Event, EventChoice
 
-??? example  "Earn [amount]% of [mapUnitFilter] unit's [costOrStrength] as [civWideStat] when killed within 4 tiles of a city following this religion"
-	Example: "Earn [3]% of [Wounded] unit's [Cost] as [Gold] when killed within 4 tiles of a city following this religion"
+??? example  "Earn [amount]% of [mapUnitFilter] unit's [costOrStrength] as [stockpile] when killed within 4 tiles of a city following this religion"
+	Example: "Earn [3]% of [Wounded] unit's [Cost] as [Mana] when killed within 4 tiles of a city following this religion"
 
 	Applicable to: FollowerBelief
 
@@ -1402,9 +1426,10 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Building, Unit, Improvement
 
 ??? example  "Costs [amount] [stockpiledResource]"
-	Do not confuse with "costs [amount] [stockpiledResource]" (lowercase 'c'), the Unit Action Modifier.
+	These resources are removed *when work begins* on the construction. Do not confuse with "costs [amount] [stockpiledResource]" (lowercase 'c'), the Unit Action Modifier.
 	Example: "Costs [3] [Mana]"
 
+	This unique's effect can be modified with &lt;(modified by game speed)&gt;
 	Applicable to: Building, Unit, Improvement
 
 ??? example  "Unbuildable"
@@ -1570,6 +1595,9 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 ??? example  "Founds a new city"
 	Applicable to: UnitAction
 
+??? example  "Founds a new puppet city"
+	Applicable to: UnitAction
+
 ??? example  "Can instantly construct a [improvementFilter] improvement"
 	Example: "Can instantly construct a [All Road] improvement"
 
@@ -1603,6 +1631,11 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Global, Unit
 
+??? example  "Can build [improvementFilter] improvements at a [relativeAmount]% rate"
+	Example: "Can build [All Road] improvements at a [+20]% rate"
+
+	Applicable to: Global, Unit
+
 ??? example  "Great General provides double combat bonus"
 	Applicable to: Global, Unit
 
@@ -1612,9 +1645,10 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Building, Unit, Improvement
 
 ??? example  "Costs [amount] [stockpiledResource]"
-	Do not confuse with "costs [amount] [stockpiledResource]" (lowercase 'c'), the Unit Action Modifier.
+	These resources are removed *when work begins* on the construction. Do not confuse with "costs [amount] [stockpiledResource]" (lowercase 'c'), the Unit Action Modifier.
 	Example: "Costs [3] [Mana]"
 
+	This unique's effect can be modified with &lt;(modified by game speed)&gt;
 	Applicable to: Building, Unit, Improvement
 
 ??? example  "Unbuildable"
@@ -1748,8 +1782,8 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Global, Unit
 
-??? example  "[relativeAmount]% Strength for enemy [combatantFilter] units in adjacent [tileFilter] tiles"
-	Example: "[+20]% Strength for enemy [City] units in adjacent [Farm] tiles"
+??? example  "[relativeAmount]% Strength for enemy [mapUnitFilter] units in adjacent [tileFilter] tiles"
+	Example: "[+20]% Strength for enemy [Wounded] units in adjacent [Farm] tiles"
 
 	Applicable to: Unit
 
@@ -1901,9 +1935,6 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Unit
 
-??? example  "Defense bonus when embarked"
-	Applicable to: Global, Unit
-
 ??? example  "No Sight"
 	Applicable to: Unit
 
@@ -1968,18 +1999,18 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Global, Unit
 
-??? example  "Earn [amount]% of the damage done to [combatantFilter] units as [civWideStat]"
-	Example: "Earn [3]% of the damage done to [City] units as [Gold]"
+??? example  "Earn [amount]% of the damage done to [combatantFilter] units as [stockpile]"
+	Example: "Earn [3]% of the damage done to [City] units as [Mana]"
 
 	Applicable to: Global, Unit
 
-??? example  "Upon capturing a city, receive [amount] times its [stat] production as [civWideStat] immediately"
-	Example: "Upon capturing a city, receive [3] times its [Culture] production as [Gold] immediately"
+??? example  "Upon capturing a city, receive [amount] times its [stat] production as [stockpile] immediately"
+	Example: "Upon capturing a city, receive [3] times its [Culture] production as [Mana] immediately"
 
 	Applicable to: Global, Unit
 
-??? example  "Earn [amount]% of killed [mapUnitFilter] unit's [costOrStrength] as [civWideStat]"
-	Example: "Earn [3]% of killed [Wounded] unit's [Cost] as [Gold]"
+??? example  "Earn [amount]% of killed [mapUnitFilter] unit's [costOrStrength] as [stockpile]"
+	Example: "Earn [3]% of killed [Wounded] unit's [Cost] as [Mana]"
 
 	Applicable to: Global, Unit
 
@@ -2147,6 +2178,9 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Meant to be used together with conditionals, like "Unavailable <after generating a Great Prophet>".
 	Applicable to: Tech, Policy, Building, Unit, Promotion, Improvement, Ruins, Event, EventChoice
 
+??? example  "Not shown on world screen"
+	Applicable to: Promotion, Resource
+
 ??? example  "Doing so will consume this opportunity to choose a Promotion"
 	Applicable to: Promotion
 
@@ -2210,7 +2244,7 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 ??? example  "Neighboring tiles will convert to [baseTerrain/terrainFeature]"
 	Supports conditionals that need only a Tile as context and nothing else, like `<with [n]% chance>`, and applies them per neighbor.
-If your mod renames Coast or Lakes, do not use this with one of these as parameter, as the code preventing artifacts won't work.
+	If your mod renames Coast or Lakes, do not use this with one of these as parameter, as the code preventing artifacts won't work.
 	Example: "Neighboring tiles will convert to [Grassland]"
 
 	Applicable to: Terrain
@@ -2236,7 +2270,10 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 
 	Applicable to: Terrain
 
-??? example  "Provides a one-time Production bonus to the closest city when cut down"
+??? example  "Provides a one-time bonus of [stats] to the closest city when cut down"
+	Example: "Provides a one-time bonus of [+1 Gold, +2 Production] to the closest city when cut down"
+
+	This unique's effect can be modified with &lt;(modified by game speed)&gt;
 	Applicable to: Terrain
 
 ??? example  "Vegetation"
@@ -2375,9 +2412,10 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 	Applicable to: Global, FollowerBelief, Improvement
 
 ??? example  "Costs [amount] [stockpiledResource]"
-	Do not confuse with "costs [amount] [stockpiledResource]" (lowercase 'c'), the Unit Action Modifier.
+	These resources are removed *when work begins* on the construction. Do not confuse with "costs [amount] [stockpiledResource]" (lowercase 'c'), the Unit Action Modifier.
 	Example: "Costs [3] [Mana]"
 
+	This unique's effect can be modified with &lt;(modified by game speed)&gt;
 	Applicable to: Building, Unit, Improvement
 
 ??? example  "Unbuildable"
@@ -2457,6 +2495,7 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 	Applicable to: Improvement
 
 ??? example  "Gives a defensive bonus of [relativeAmount]%"
+	Does not accept unit-based conditionals
 	Example: "Gives a defensive bonus of [+20]%"
 
 	Applicable to: Improvement
@@ -2493,6 +2532,9 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 ??? example  "Pillaging this improvement yields [stats]"
 	Example: "Pillaging this improvement yields [+1 Gold, +2 Production]"
 
+	Applicable to: Improvement
+
+??? example  "Destroyed when pillaged"
 	Applicable to: Improvement
 
 ??? example  "Irremovable"
@@ -2553,7 +2595,7 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 	Applicable to: Resource
 
 ??? example  "Not shown on world screen"
-	Applicable to: Resource
+	Applicable to: Promotion, Resource
 
 ??? example  "Generated with weight [amount]"
 	The probability for this resource to be chosen is (this resource weight) / (sum weight of all eligible resources). Resources without a unique are given weight `1`
@@ -2582,6 +2624,16 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 	Applicable to: Resource
 
 ??? example  "Guaranteed with Strategic Balance resource option"
+	Applicable to: Resource
+
+??? example  "AI will sell at [amount] Gold"
+	Example: "AI will sell at [3] Gold"
+
+	Applicable to: Resource
+
+??? example  "AI will buy at [amount] Gold"
+	Example: "AI will buy at [3] Gold"
+
 	Applicable to: Resource
 
 ??? example  "Will not be displayed in Civilopedia"
@@ -2759,6 +2811,11 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 
 	Applicable to: Conditional
 
+??? example  "&lt;on [difficulty] difficulty&gt;"
+	Example: "&lt;on [Prince] difficulty&gt;"
+
+	Applicable to: Conditional
+
 ??? example  "&lt;when [victoryType] Victory is enabled&gt;"
 	Example: "&lt;when [Domination] Victory is enabled&gt;"
 
@@ -2779,6 +2836,9 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 	Applicable to: Conditional
 
 ??? example  "&lt;when espionage is disabled&gt;"
+	Applicable to: Conditional
+
+??? example  "&lt;when nuclear weapons are enabled&gt;"
 	Applicable to: Conditional
 
 ??? example  "&lt;with [amount]% chance&gt;"
@@ -2806,6 +2866,9 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 	Applicable to: Conditional
 
 ??? example  "&lt;during a Golden Age&gt;"
+	Applicable to: Conditional
+
+??? example  "&lt;when not in a Golden Age&gt;"
 	Applicable to: Conditional
 
 ??? example  "&lt;during We Love The King Day&gt;"
@@ -2852,17 +2915,17 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 ??? example  "&lt;if no other Civilization has researched this&gt;"
 	Applicable to: Conditional
 
-??? example  "&lt;after discovering [tech]&gt;"
+??? example  "&lt;after discovering [techFilter]&gt;"
 	Example: "&lt;after discovering [Agriculture]&gt;"
 
 	Applicable to: Conditional
 
-??? example  "&lt;before discovering [tech]&gt;"
+??? example  "&lt;before discovering [techFilter]&gt;"
 	Example: "&lt;before discovering [Agriculture]&gt;"
 
 	Applicable to: Conditional
 
-??? example  "&lt;while researching [tech]&gt;"
+??? example  "&lt;while researching [techFilter]&gt;"
 	This condition is fulfilled while the technology is actively being researched (it is the one research points are added to)
 	Example: "&lt;while researching [Agriculture]&gt;"
 
@@ -2967,6 +3030,16 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 	Applicable to: Conditional
 
 ??? example  "&lt;in cities connected to the capital&gt;"
+	Applicable to: Conditional
+
+??? example  "&lt;in cities with a [religionFilter] religion&gt;"
+	Example: "&lt;in cities with a [major] religion&gt;"
+
+	Applicable to: Conditional
+
+??? example  "&lt;in cities not following a [religionFilter] religion&gt;"
+	Example: "&lt;in cities not following a [major] religion&gt;"
+
 	Applicable to: Conditional
 
 ??? example  "&lt;in cities with a major religion&gt;"
@@ -3226,6 +3299,9 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 ??? example  "&lt;upon turn end&gt;"
 	Applicable to: TriggerCondition
 
+??? example  "&lt;upon turn start&gt;"
+	Applicable to: TriggerCondition
+
 ??? example  "&lt;upon founding a Pantheon&gt;"
 	Applicable to: TriggerCondition
 
@@ -3302,6 +3378,11 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 
 ??? example  "&lt;upon discovering a [tileFilter] tile&gt;"
 	Example: "&lt;upon discovering a [Farm] tile&gt;"
+
+	Applicable to: UnitTriggerCondition
+
+??? example  "&lt;upon entering a [tileFilter] tile&gt;"
+	Example: "&lt;upon entering a [Farm] tile&gt;"
 
 	Applicable to: UnitTriggerCondition
 
@@ -3382,6 +3463,11 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 
 	Applicable to: MetaModifier
 
+??? example  "&lt;for every adjacent [tileFilter]&gt;"
+	Example: "&lt;for every adjacent [Farm]&gt;"
+
+	Applicable to: MetaModifier
+
 ??? example  "&lt;for every [amount] [countable]&gt;"
 	Example: "&lt;for every [3] [1000]&gt;"
 
@@ -3407,6 +3493,7 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 *[combatantFilter]: This indicates a combatant, which can either be a unit or a city (when bombarding). Must either be `City` or a `mapUnitFilter`.
 *[costOrStrength]: `Cost` or `Strength`.
 *[countable]: This indicates a number or a numeric variable.
+*[difficulty]: The name of any difficulty.
 *[era]: The name of any era.
 *[event]: The name of any event.
 *[foundingOrEnhancing]: `founding` or `enhancing`.
@@ -3424,6 +3511,7 @@ If your mod renames Coast or Lakes, do not use this with one of these as paramet
 *[speed]: The name of any speed.
 *[stat]: This is one of the 7 major stats in the game - `Gold`, `Science`, `Production`, `Food`, `Happiness`, `Culture` and `Faith`. Note that the stat names need to be capitalized!
 *[stats]: For example: `+2 Production, +3 Food`. Note that the stat names need to be capitalized!
+*[stockpile]: The name of any stockpiled resource.
 *[stockpiledResource]: The name of any stockpiled resource.
 *[tech]: The name of any tech.
 *[terrainFeature]: The name of any terrain that is a terrain feature according to the json file.

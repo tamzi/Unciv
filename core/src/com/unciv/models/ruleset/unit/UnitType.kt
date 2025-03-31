@@ -13,9 +13,8 @@ enum class UnitMovementType { // The types of tiles the unit can by default ente
 }
 
 class UnitType() : RulesetObject() {
-    private var movementType: String? = null
+    internal var movementType: String? = null
     private val unitMovementType: UnitMovementType? by lazy { if (movementType == null) null else UnitMovementType.valueOf(movementType!!) }
-
     override fun getUniqueTarget() = UniqueTarget.UnitType
     override fun makeLink() = "UnitType/$name"
 
@@ -36,7 +35,7 @@ class UnitType() : RulesetObject() {
             "Land" -> isLandUnit()
             "Water" -> isWaterUnit()
             "Air" -> isAirUnit()
-            else -> uniqueMap.hasTagUnique(filter)
+            else -> hasTagUnique(filter)
         }
     }
 

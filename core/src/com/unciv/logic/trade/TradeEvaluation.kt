@@ -25,16 +25,22 @@ class TradeEvaluation {
 
         // Edge case time! Guess what happens if you offer a peace agreement to the AI for all their cities except for the capital,
         //  and then capture their capital THAT SAME TURN? It can agree, leading to the civilization getting instantly destroyed!
-        if (trade.ourOffers.count { it.type == TradeOfferType.City } == offerer.cities.size
-                || trade.theirOffers.count { it.type == TradeOfferType.City } == tradePartner.cities.size)
+        // If a civ doen't has ever owned an original capital, which means it has not settle the first city yet, 
+        // it shouldn't be forbidden to trade with other civs owing to cities.size == 0.
+        if ((offerer.hasEverOwnedOriginalCapital && trade.ourOffers.count { it.type == TradeOfferType.City } == offerer.cities.size)
+            || (tradePartner.hasEverOwnedOriginalCapital && trade.theirOffers.count { it.type == TradeOfferType.City } == tradePartner.cities.size)) {
             return false
+        }
 
         for (offer in trade.ourOffers)
-            if (!isOfferValid(offer, offerer, tradePartner))
+            if (!isOfferValid(offer, offerer, tradePartner)) {
                 return false
+            }            
+
         for (offer in trade.theirOffers)
-            if (!isOfferValid(offer, tradePartner, offerer))
+            if (!isOfferValid(offer, tradePartner, offerer)) {
                 return false
+            }
         return true
     }
 
@@ -46,8 +52,9 @@ class TradeEvaluation {
         }
 
         return when (tradeOffer.type) {
-            TradeOfferType.Gold -> true // even if they go negative it's okay
-            TradeOfferType.Gold_Per_Turn -> true // even if they go negative it's okay
+            // if they go a little negative it's okay, but don't allowing going overboard (promising same gold to many)
+            TradeOfferType.Gold -> tradeOffer.amount * 0.9f < offerer.gold
+            TradeOfferType.Gold_Per_Turn -> tradeOffer.amount * 0.9f < offerer.stats.statsForNextTurn.gold
             TradeOfferType.Treaty -> {
                 // Current automation should prevent these from being offered anyway, 
                 //   these are a safeguard against future automation changes 
@@ -61,6 +68,7 @@ class TradeEvaluation {
             TradeOfferType.Agreement -> true
             TradeOfferType.Luxury_Resource -> hasResource(tradeOffer)
             TradeOfferType.Strategic_Resource -> hasResource(tradeOffer)
+            TradeOfferType.Stockpiled_Resource -> hasResource(tradeOffer)
             TradeOfferType.Technology -> true
             TradeOfferType.Introduction -> !tradePartner.knows(tradeOffer.name) // You can't introduce them to someone they already know!
             TradeOfferType.WarDeclaration -> offerer.getDiplomacyManager(tradeOffer.name)!!.canDeclareWar()
@@ -132,6 +140,12 @@ class TradeEvaluation {
             TradeOfferType.Luxury_Resource -> {
                 if (civInfo.getDiplomacyManager(tradePartner)!!.hasFlag(DiplomacyFlags.ResourceTradesCutShort))
                     return 0 // We don't trust you for resources
+                
+                val lowestExplicitBuyCost = civInfo.gameInfo.ruleset.tileResources[offer.name]!!
+                    .getMatchingUniques(UniqueType.AiWillBuyAt, StateForConditionals(civInfo))
+                    .minOfOrNull { it.params[0].toInt() }
+
+                if (lowestExplicitBuyCost != null) return lowestExplicitBuyCost
 
                 val weLoveTheKingPotential = civInfo.cities.count { it.demandedResource == offer.name } * 50
                 return if(!civInfo.hasResource(offer.name)) { // we can't trade on resources, so we are only interested in 1 copy for ourselves
@@ -151,15 +165,28 @@ class TradeEvaluation {
                 if (amountWillingToBuy <= 0) return 0 // we already have enough.
                 val amountToBuyInOffer = min(amountWillingToBuy, offer.amount)
 
+
+                val lowestExplicitBuyCost = civInfo.gameInfo.ruleset.tileResources[offer.name]!!
+                    .getMatchingUniques(UniqueType.AiWillBuyAt, StateForConditionals(civInfo))
+                    .minOfOrNull { it.params[0].toInt() }
+                if (lowestExplicitBuyCost != null) return lowestExplicitBuyCost
+
                 val canUseForBuildings = civInfo.cities
                         .any { city -> city.cityConstructions.getBuildableBuildings().any {
-                            it.getResourceRequirementsPerTurn(StateForConditionals(civInfo, city)).containsKey(offer.name) } }
+                            it.getResourceRequirementsPerTurn(city.state).containsKey(offer.name) } }
                 val canUseForUnits = civInfo.cities
                         .any { city -> city.cityConstructions.getConstructableUnits().any {
-                            it.getResourceRequirementsPerTurn(StateForConditionals(civInfo)).containsKey(offer.name) } }
+                            it.getResourceRequirementsPerTurn(civInfo.state).containsKey(offer.name) } }
                 if (!canUseForBuildings && !canUseForUnits) return 0
 
                 return 50 * amountToBuyInOffer
+            }
+            
+            TradeOfferType.Stockpiled_Resource -> {
+                val resource = civInfo.gameInfo.ruleset.tileResources[offer.name] ?: return 0
+                val lowestBuyCost = resource.getMatchingUniques(UniqueType.AiWillBuyAt, StateForConditionals(civInfo))
+                    .minOfOrNull { it.params[0].toInt() }
+                return lowestBuyCost ?: 0
             }
 
             TradeOfferType.Technology -> // Currently unused
@@ -183,12 +210,12 @@ class TradeEvaluation {
             TradeOfferType.City -> {
                 val city = tradePartner.cities.firstOrNull { it.id == offer.name }
                     ?: throw Exception("Got an offer for city id "+offer.name+" which does't seem to exist for this civ!")
-                val stats = city.cityStats.currentCityStats
                 val surrounded: Int = surroundedByOurCities(city, civInfo)
                 if (civInfo.getHappiness() + city.cityStats.happinessList.values.sum() < 0)
                     return 0 // we can't really afford to go into negative happiness because of buying a city
-                val sumOfStats = stats.culture + stats.gold + stats.science + stats.production + stats.happiness + stats.food + surrounded
-                return sumOfStats.toInt() * 100
+                val sumOfPop = city.population.population
+                val sumOfBuildings = city.cityConstructions.getBuiltBuildings().count()
+                return (sumOfPop * 4 + sumOfBuildings * 1 + 4 + surrounded) * 100
             }
             TradeOfferType.Agreement -> {
                 if (offer.name == Constants.openBorders) return 100
@@ -245,12 +272,18 @@ class TradeEvaluation {
                 }
             }
             TradeOfferType.Luxury_Resource -> {
+                val lowestExplicitSellCost = civInfo.gameInfo.ruleset.tileResources[offer.name]!!
+                    .getMatchingUniques(UniqueType.AiWillSellAt, StateForConditionals(civInfo))
+                    .minOfOrNull { it.params[0].toInt() }
+
+                if (lowestExplicitSellCost != null) return lowestExplicitSellCost
+                
                 return when {
                     civInfo.getResourceAmount(offer.name) > 1 -> 250 // fair price
-                    civInfo.hasUnique(UniqueType.RetainHappinessFromLuxury) -> // If we retain 50% happiness, value at 375
-                        750 - (civInfo.getMatchingUniques(UniqueType.RetainHappinessFromLuxury)
-                            .first().params[0].toPercent() * 250).toInt()
-                    else -> 500 // you want to take away our last lux of this type?!
+                    civInfo.hasUnique(UniqueType.RetainHappinessFromLuxury) -> // If we retain 100% happiness, value it as a duplicate lux
+                        600 - (civInfo.getMatchingUniques(UniqueType.RetainHappinessFromLuxury)
+                            .first().params[0].toPercent() * 350).toInt()
+                    else -> 600 // you want to take away our last lux of this type?!
                 }
             }
             TradeOfferType.Strategic_Resource -> {
@@ -258,12 +291,18 @@ class TradeEvaluation {
                     (civInfo.hasUnique(UniqueType.EnablesConstructionOfSpaceshipParts) ||
                             tradePartner.hasUnique(UniqueType.EnablesConstructionOfSpaceshipParts))
                 )
-                    return 10000 // We'd rather win the game, thanks
+                    return Int.MAX_VALUE // We'd rather win the game, thanks
+                
+                val lowestExplicitSellCost = civInfo.gameInfo.ruleset.tileResources[offer.name]!!
+                    .getMatchingUniques(UniqueType.AiWillSellAt, StateForConditionals(civInfo))
+                    .minOfOrNull { it.params[0].toInt() }
+                
+                if (lowestExplicitSellCost != null) return lowestExplicitSellCost
 
                 if (!civInfo.isAtWar()) return 50 * offer.amount
 
                 val canUseForUnits = civInfo.gameInfo.ruleset.units.values
-                    .any { it.getResourceRequirementsPerTurn(StateForConditionals(civInfo)).containsKey(offer.name)
+                    .any { it.getResourceRequirementsPerTurn(civInfo.state).containsKey(offer.name)
                             && it.isBuildable(civInfo) }
                 if (!canUseForUnits) return 50 * offer.amount
 
@@ -284,6 +323,14 @@ class TradeEvaluation {
                 }
                 return totalCost
             }
+
+            TradeOfferType.Stockpiled_Resource -> {
+                val resource = civInfo.gameInfo.ruleset.tileResources[offer.name] ?: return 0
+                val lowestSellCost = resource.getMatchingUniques(UniqueType.AiWillSellAt, StateForConditionals(civInfo))
+                    .minOfOrNull { it.params[0].toInt() }
+                return lowestSellCost ?: Int.MAX_VALUE
+            }
+            
             TradeOfferType.Technology -> return sqrt(civInfo.gameInfo.ruleset.technologies[offer.name]!!.cost.toDouble()).toInt() * 20
             TradeOfferType.Introduction -> return introductionValue(civInfo.gameInfo.ruleset)
             TradeOfferType.WarDeclaration -> {
@@ -307,10 +354,9 @@ class TradeEvaluation {
                     ?: throw Exception("Got an offer to sell city id " + offer.name + " which does't seem to exist for this civ!")
 
                 val distanceBonus = distanceCityTradeModifier(civInfo, city)
-                val stats = city.cityStats.currentCityStats
-                val sumOfStats =
-                    stats.culture + stats.gold + stats.science + stats.production + stats.happiness + stats.food + distanceBonus
-                return (sumOfStats.toInt() * 100).coerceAtLeast(1000)
+                val sumOfPop = city.population.population
+                val sumOfBuildings = city.cityConstructions.getBuiltBuildings().count()
+                return ((sumOfPop * 4 + sumOfBuildings * 1 + 4 + distanceBonus) * 100).coerceAtLeast(1000)
             }
             TradeOfferType.Agreement -> {
                 if (offer.name == Constants.openBorders) {

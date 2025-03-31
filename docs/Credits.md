@@ -15,10 +15,6 @@ New Unciv logo made by u-ndefined on Discord
 
 Base tile icons for the "Fantasy Hex" tileset belong to CuddlyClover @ https://cuddlyclover.itch.io/fantasy-hex-tiles with a few additions by various contributors
 
-Tile improvements and units, as well as the terrains and improvements for HexaRealm tileset, are made by The Bucketeer / @GeneralWadaling and are licenced under Creative Commons 3.0
-
-Unless otherwise specified, units for the [AbsoluteUnits unitset](https://github.com/letstalkaboutdune/AbsoluteUnits) are made by [letstalkaboutdune](https://github.com/letstalkaboutdune) and are licensed under Creative Commons Attribution 4.0 International
-
 Promotional trailer for Steam and other storefronts made by [letstalkaboutdune](https://github.com/letstalkaboutdune)
 
 Unless otherwise specified, all the following are from [the Noun Project](https://thenounproject.com) licenced under either Creative Commons or Public Domain
@@ -165,7 +161,9 @@ Unless otherwise specified, all the following are from [the Noun Project](https:
 -   [Religion](https://thenounproject.com/icon/preach-53064) by Bruno Gätjens González adapted for Missionary
 -   [invisibility cloak ](https://thenounproject.com/term/invisibility-cloak/1419648/) by Locad for Inquisitor
 
-### Units - extra AbsoluteUnits tileset images
+### Units - AbsoluteUnits unitset images
+
+Unless otherwise specified, units for the [AbsoluteUnits unitset](https://github.com/letstalkaboutdune/AbsoluteUnits) are made by [letstalkaboutdune](https://github.com/letstalkaboutdune) and are licensed under Creative Commons Attribution 4.0 International
 
 Barbarian variants by Pelo, made for [Playable Barbarians](https://github.com/Jaba583/Playable-Barbarians):
 
@@ -179,10 +177,22 @@ Barbarian variants by Pelo, made for [Playable Barbarians](https://github.com/Ja
 - Trireme-Barbarians
 - Musketman-Barbarians
 
-## By Basil
+By Basil:
 
 - Worker-Barbarians
+- Settler-Ancient era
 
+### HexaRealm
+
+Unless otherwise specified, Tile improvements and units, as well as the terrains and improvements for HexaRealm tileset, are made by The Bucketeer / @GeneralWadaling and are licenced under Creative Commons 3.0
+
+
+HexaRealm tileset images by legacymtgsalvationuser69544 [here](https://github.com/legacymtgsalvationuser69544/Edges-Tileset):
+
+- Coast-Land edge tiles
+- Coast-Ocean edge tiles
+- Lake-Land edge tiles
+- Krakatoa (based on The Bucketeer's tile)
 
 ### Resources
 
@@ -599,7 +609,7 @@ Barbarian variants by Pelo, made for [Playable Barbarians](https://github.com/Ja
 -   [Eye of Horus](https://thenounproject.com/icon/eye%20of%20horus-92471) By Lilit Kalachyan for Egypt
 -   [Russia](https://thenounproject.com/icon/russia-64137) By Eugen Belyakoff
 -   [Dragon Head](https://github.com/ravignir/5Hex-Tileset/blob/master/Images/NationIcons/China.png) By Ravignir for China
--   [Lion](https://thenounproject.com/icon/lion-912735) By parkjisun for Babylon
+-   [Lamassu](https://thenounproject.com/icon/lamassu-118987/) By Jason Dilworth for Babylon
 -   [Omega](https://thenounproject.com/icon/omega-1925519) By icon 54 for Greece
 -   [Shield](https://thenounproject.com/icon/American%20shield-5825) By Nathan Driskell for America
 -   [Fleaur de Lis](https://thenounproject.com/icon/fleur%20de-78672) By Jessika Gadoury for France
@@ -701,7 +711,7 @@ Barbarian variants by Pelo, made for [Playable Barbarians](https://github.com/Ja
 - [City](https://thenounproject.com/icon/city-571332) By Felix Westphal
 - [Fire](https://thenounproject.com/icon/96564) By Lloyd Humphreys for "city being razed" icon
 - [Sleep](https://thenounproject.com/icon/sleep-1760085) By Saeful Muslim for unit "sleep" action and status
-- [Clockwise](https://thenounproject.com/icon/clockwise-184528/) By Universal Icons (Louis Dawson) for "Wait" icon. The original work has been slightly modified.
+- [Skip](https://www.flaticon.com/free-icon/jump_3976216) by Freq Wazza for Skip icon
 - [Banner](https://thenounproject.com/term/banner/866282/) By Emir Palavan for embarked units
 - [Arrow](https://thenounproject.com/icon/arrow-2032227/) By uzeir syarief for moving between idle units, expanders, etc.
 - [Exchange](https://thenounproject.com/icon/exchange-17858) By Mike Rowe for switching tiles between cities
@@ -767,6 +777,12 @@ Barbarian variants by Pelo, made for [Playable Barbarians](https://github.com/Ja
 - [Cat](https://thenounproject.com/icon/cat-158942/) by Josi for Politics overview diagram legend
 - [Bell](https://thenounproject.com/icon/bell-2054409) by Lyhn, transparency modified, for Notifications (overview, unhide button)
 - [Galileo Donatello](https://en.wikipedia.org/wiki/File:Galileo_Donato.jpg) for the "Meet another civilization" tutorial: Public domain
+- [ServerRack](https://thenounproject.com/icon/server-rack-922717/) by Chad Remsing
+- [RobotArm] (https://thenounproject.com/icon/robot-7300306/) by Faizal khusein
+- [RobotHeadSquare] (https://thenounproject.com/icon/robot-head-6356754/) by Ahmad Arzaha
+- [RobotHeadRect] (https://thenounproject.com/icon/robot-1704106/) by suib icon
+- [Bobot] by reallybasicname in the Discord
+- [DollarSign] (https://thenounproject.com/icon/dollar-sign-6466560/) by Ahmad Arzaha
 
 ### Main menu
 
@@ -778,6 +794,12 @@ Barbarian variants by Pelo, made for [Playable Barbarians](https://github.com/Ja
 -   [Options](https://thenounproject.com/icon/options-866090) By Thengakola
 -   [Package](https://thenounproject.com/icon/package-1886048) by shashank singh for Mods
 -   [scenario planning](https://thenounproject.com/icon/scenario-6569968) by nicolas for Scenarios
+
+### WorldScreen
+
+- [Reduce](https://www.flaticon.com/free-icon/reduce_1817377) by Freepik
+- [Increase](https://www.flaticon.com/free-icon/increase_1817463) by Freepik
+- [Corner](https://www.flaticon.com/free-icon/corner_11390067) by Muhamad Ulum
 
 ## Sound credits
 

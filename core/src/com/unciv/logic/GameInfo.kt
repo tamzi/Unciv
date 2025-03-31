@@ -287,6 +287,7 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
         civilizations.add(it)
         it.gameInfo = this
         it.setNationTransient()
+        it.cache.updateState()
         it.cache.updateViewableTiles()
         it.setTransients()
     }
@@ -638,7 +639,7 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
         removeMissingModReferences()
 
         for (baseUnit in ruleset.units.values)
-            baseUnit.ruleset = ruleset
+            baseUnit.setRuleset(ruleset)
 
         for (building in ruleset.buildings.values)
             building.ruleset = ruleset
@@ -646,7 +647,10 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
         // This needs to go before tileMap.setTransients, as units need to access
         // the nation of their civilization when setting transients
         for (civInfo in civilizations) civInfo.gameInfo = this
-        for (civInfo in civilizations) civInfo.setNationTransient()
+        for (civInfo in civilizations) {
+            civInfo.setNationTransient()
+            civInfo.cache.updateState()
+        }
         // must be done before updating tileMap, since unit uniques depend on civ uniques depend on allied city-state uniques depend on diplomacy
         for (civInfo in civilizations) {
             for (diplomacyManager in civInfo.diplomacy.values) {

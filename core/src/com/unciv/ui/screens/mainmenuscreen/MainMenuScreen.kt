@@ -1,5 +1,6 @@
 ﻿package com.unciv.ui.screens.mainmenuscreen
 
+import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.actions.Actions
@@ -27,6 +28,7 @@ import com.unciv.ui.audio.SoundPlayer
 import com.unciv.ui.components.UncivTooltip.Companion.addTooltip
 import com.unciv.ui.components.extensions.center
 import com.unciv.ui.components.extensions.surroundWithCircle
+import com.unciv.ui.components.extensions.surroundWithThinCircle
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.input.KeyShortcutDispatcherVeto
 import com.unciv.ui.components.input.KeyboardBinding
@@ -36,6 +38,7 @@ import com.unciv.ui.components.input.onLongPress
 import com.unciv.ui.components.tilegroups.TileGroupMap
 import com.unciv.ui.components.widgets.AutoScrollPane
 import com.unciv.ui.images.ImageGetter
+import com.unciv.ui.images.padTopDescent
 import com.unciv.ui.popups.Popup
 import com.unciv.ui.popups.ToastPopup
 import com.unciv.ui.popups.closeAllPopups
@@ -96,6 +99,7 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
         )
         table.add(ImageGetter.getImage(icon)).size(50f).padRight(20f)
         table.add(text.toLabel(fontSize = 30, alignment = Align.left)).expand().left().minWidth(200f)
+            .padTopDescent()
 
         table.touchable = Touchable.enabled
         table.onActivation(binding = binding) {
@@ -118,7 +122,7 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
         // If we were in a mod, some of the resource images for the background map we're creating
         // will not exist unless we reset the ruleset and images
         val baseRuleset = RulesetCache.getVanillaRuleset()
-        ImageGetter.ruleset = baseRuleset
+        ImageGetter.setNewRuleset(baseRuleset)
 
         if (game.settings.enableEasterEggs) {
             val holiday = HolidayDates.getHolidayByDate()
@@ -169,12 +173,6 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
             { game.pushScreen(ModManagementScreen()) }
         column2.add(modsTable).row()
 
-        if (game.files.getScenarioFiles().any()){
-            val scenarioTable = getMenuButton("Scenarios", "OtherIcons/Scenarios", KeyboardBinding.Scenarios)
-            { game.pushScreen(ScenarioScreen()) }
-            column2.add(scenarioTable).row()
-        }
-
         val optionsTable = getMenuButton("Options", "OtherIcons/Options", KeyboardBinding.MainMenuOptions)
             { openOptionsPopup() }
         optionsTable.onLongPress { openOptionsPopup(withDebug = true) }
@@ -199,20 +197,37 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
             game.popScreen()
         }
 
-        val helpButton = "?".toLabel(fontSize = 48)
+        val civilopediaButton = "?".toLabel(fontSize = 48)
             .apply { setAlignment(Align.center) }
             .surroundWithCircle(60f, color = skinStrings.skinConfig.baseColor)
             .apply { actor.y -= 2.5f } // compensate font baseline (empirical)
             .surroundWithCircle(64f, resizeActor = false)
-        helpButton.touchable = Touchable.enabled
+        civilopediaButton.touchable = Touchable.enabled
         // Passing the binding directly to onActivation gives you a size 26 tooltip...
-        helpButton.onActivation { openCivilopedia() }
-        helpButton.keyShortcuts.add(KeyboardBinding.Civilopedia)
-        helpButton.addTooltip(KeyboardBinding.Civilopedia, 30f)
-        helpButton.setPosition(30f, 30f)
-        stage.addActor(helpButton)
+        civilopediaButton.onActivation { openCivilopedia() }
+        civilopediaButton.keyShortcuts.add(KeyboardBinding.Civilopedia)
+        civilopediaButton.addTooltip(KeyboardBinding.Civilopedia, 30f)
+        civilopediaButton.setPosition(30f, 30f)
+        stage.addActor(civilopediaButton)
+
+        val rightSideButtons = Table().apply { defaults().pad(10f) }
+        val discordButton = ImageGetter.getImage("OtherIcons/Discord")
+            .surroundWithCircle(60f, color = skinStrings.skinConfig.baseColor)
+            .surroundWithThinCircle(Color.WHITE)
+            .onActivation { Gdx.net.openURI("https://discord.gg/bjrB4Xw") }
+        rightSideButtons.add(discordButton)
+
+        val githubButton = ImageGetter.getImage("OtherIcons/Github")
+            .surroundWithCircle(60f, color = skinStrings.skinConfig.baseColor)
+            .surroundWithThinCircle(Color.WHITE)
+            .onActivation { Gdx.net.openURI("https://github.com/yairm210/Unciv") }
+        rightSideButtons.add(githubButton)
         
-        
+        rightSideButtons.pack()
+        rightSideButtons.setPosition(stage.width - 30, 30f, Align.bottomRight)
+        stage.addActor(rightSideButtons)
+
+
         val versionLabel = "{Version} ${UncivGame.VERSION.text}".toLabel()
         versionLabel.setAlignment(Align.center)
         val versionTable = Table()
@@ -242,13 +257,13 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
                     shape = MapShape.rectangular
                     mapSize = MapSize.Small
                     type = MapType.pangaea
-                    temperatureExtremeness = .7f
+                    temperatureintensity = .7f
                     waterThreshold = -0.1f // mainly land, gets about 30% water
                     modifyForEasterEgg()
                 })
 
             launchOnGLThread { // for GL context
-                ImageGetter.setNewRuleset(backgroundMapRuleset)
+                ImageGetter.setNewRuleset(backgroundMapRuleset, ignoreIfModsAreEqual = true)
                 val mapHolder = EditorMapHolder(
                     this@MainMenuScreen,
                     newMap
@@ -299,7 +314,6 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
             } else {
                 GUI.resetToWorldScreen()
                 GUI.getWorldScreen().popups.filterIsInstance<WorldScreenMenuPopup>().forEach(Popup::close)
-                ImageGetter.setNewRuleset(game.gameInfo!!.ruleset)
             }
         } else {
             QuickSave.autoLoadGame(this)
@@ -369,6 +383,10 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
     override fun recreate(): BaseScreen {
         stopBackgroundMapGeneration()
         return MainMenuScreen()
+    }
+
+    override fun resume() {
+        startBackgroundMapGeneration()
     }
 
     // We contain a map...

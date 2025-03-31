@@ -5,7 +5,6 @@ import com.unciv.logic.city.CityConstructions
 import com.unciv.logic.civilization.diplomacy.DiplomacyFlags
 import com.unciv.logic.civilization.diplomacy.DiplomacyManager
 import com.unciv.logic.civilization.managers.TechManager
-import com.unciv.logic.map.tile.RoadStatus
 import com.unciv.models.ruleset.ModOptions
 import com.unciv.models.ruleset.PerpetualConstruction
 import com.unciv.models.ruleset.Ruleset
@@ -28,9 +27,11 @@ object BackwardCompatibility {
         tileMap.removeMissingTerrainModReferences(ruleset)
 
         removeUnitsAndPromotions()
+        removeMissingGreatPersonPoints()
 
         // Mod decided you can't repair things anymore - get rid of old pillaged improvements
         removeOldPillagedImprovements()
+        removeMissingLastSeenImprovements()
 
         handleMissingReferencesForEachCity()
 
@@ -57,18 +58,36 @@ object BackwardCompatibility {
         }
     }
 
+    private fun GameInfo.removeMissingGreatPersonPoints() {
+        for (civ in civilizations) {
+            // Don't remove the 'points to next' counters, since pools do not necessarily correspond to unit names
+            for (key in civ.greatPeople.greatGeneralPointsCounter.keys.toList())
+                if (!ruleset.units.containsKey(key))
+                    civ.greatPeople.greatGeneralPointsCounter.remove(key)
+            for (key in civ.greatPeople.greatPersonPointsCounter.keys.toList())
+                if (!ruleset.units.containsKey(key))
+                    civ.greatPeople.greatPersonPointsCounter.remove(key)
+        }
+    }
+
     private fun GameInfo.removeOldPillagedImprovements() {
         if (!ruleset.tileImprovements.containsKey(Constants.repair))
             for (tile in tileMap.values) {
                 if (tile.roadIsPillaged) {
-                    tile.roadStatus = RoadStatus.None
-                    tile.roadIsPillaged = false
+                    tile.removeRoad()
                 }
                 if (tile.improvementIsPillaged) {
                     tile.improvement = null
                     tile.improvementIsPillaged = false
                 }
             }
+    }
+
+    private fun GameInfo.removeMissingLastSeenImprovements() {
+        for (civ in civilizations)
+            for ((vector,improvementName) in civ.lastSeenImprovement.toList())
+                if (!ruleset.tileImprovements.containsKey(improvementName))
+                    civ.lastSeenImprovement.remove(vector)
     }
 
     private fun GameInfo.handleMissingReferencesForEachCity() {

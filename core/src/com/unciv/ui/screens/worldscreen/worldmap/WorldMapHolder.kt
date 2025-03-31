@@ -12,6 +12,7 @@ import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.actions.Actions
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
+import com.badlogic.gdx.math.Interpolation
 import com.unciv.UncivGame
 import com.unciv.logic.battle.Battle
 import com.unciv.logic.battle.MapUnitCombatant
@@ -44,7 +45,7 @@ import com.unciv.ui.components.widgets.ZoomableScrollPane
 import com.unciv.ui.screens.basescreen.UncivStage
 import com.unciv.ui.screens.worldscreen.UndoHandler.Companion.recordUndoCheckpoint
 import com.unciv.ui.screens.worldscreen.WorldScreen
-import com.unciv.ui.screens.worldscreen.bottombar.BattleTableHelpers.battleAnimation
+import com.unciv.ui.screens.worldscreen.bottombar.BattleTableHelpers.battleAnimationDeferred
 import com.unciv.utils.Concurrency
 import com.unciv.utils.Log
 import com.unciv.utils.launchOnGLThread
@@ -197,7 +198,6 @@ class WorldMapHolder(
                 unitTable.citySelected(previousSelectedCity)
             }
         }
-        worldScreen.viewingCiv.tacticalAI.showZonesDebug(tile)
         worldScreen.shouldUpdate = true
     }
 
@@ -237,7 +237,7 @@ class WorldMapHolder(
                 SoundPlayer.play(attacker.getAttackSound())
                 val (damageToDefender, damageToAttacker) = Battle.attackOrNuke(attacker, attackableTile)
                 if (attackableTile.combatant != null)
-                    worldScreen.battleAnimation(attacker, damageToAttacker, attackableTile.combatant, damageToDefender)
+                    worldScreen.battleAnimationDeferred(attacker, damageToAttacker, attackableTile.combatant, damageToDefender)
                 localShouldUpdate = true
             } else if (unit.movement.canReach(tile)) {
                 /** ****** Right-click Move ****** */
@@ -340,17 +340,21 @@ class WorldMapHolder(
 
         // Steal the current sprites to our new group
         val unitSpriteAndIcon = Group().apply { setPosition(tileGroup.x, tileGroup.y) }
-        val unitSpriteSlot = tileGroup.layerUnitArt.getSpriteSlot(selectedUnit)
-        for (spriteImage in unitSpriteSlot.children) unitSpriteAndIcon.addActor(spriteImage)
+        val unitSpriteSlot = tileGroup.layerUnitArt.getSpriteSlot(selectedUnit) ?: return
+        
+        for (spriteImage in unitSpriteSlot.spriteGroup.children) unitSpriteAndIcon.addActor(spriteImage)
         tileGroup.parent.addActor(unitSpriteAndIcon)
 
-        // Disable the final tile, so we won't have one image "merging into" the other
-        val targetTileSpriteSlot = tileGroups[targetTile]!!.layerUnitArt.getSpriteSlot(selectedUnit)
-        targetTileSpriteSlot.isVisible = false
-
+        
 
         unitSpriteAndIcon.addAction(
             Actions.sequence(
+                Actions.run {
+                    // Disable the final tile, so we won't have one image "merging into" the other
+                    // Can only be done after the new group has been updated, to get the spriteGroup
+                    val targetTileSpriteSlot = tileGroups[targetTile]!!.layerUnitArt.getSpriteSlot(selectedUnit)
+                    targetTileSpriteSlot?.spriteGroup?.isVisible = false
+                },
                 *pathToTile.map { tile ->
                     Actions.moveTo(
                         tileGroups[tile]!!.x,
@@ -360,7 +364,8 @@ class WorldMapHolder(
                 }.toTypedArray(),
                 Actions.run {
                     // Re-enable the final tile
-                    targetTileSpriteSlot.isVisible = true
+                    val targetTileSpriteSlot = tileGroups[targetTile]!!.layerUnitArt.getSpriteSlot(selectedUnit)
+                    targetTileSpriteSlot?.spriteGroup?.isVisible = true
                     worldScreen.shouldUpdate = true
                 },
                 Actions.removeActor(),
@@ -513,7 +518,9 @@ class WorldMapHolder(
         }
 
         addOverlayOnTileGroup(tileGroups[tile]!!, table)
-        table.moveBy(0f, 48f)
+        table.color.a = 0f
+        table.addAction(Actions.moveBy(0f, 48f, 0.2f, Interpolation.fade))
+        table.addAction(Actions.alpha(1f, 0.2f, Interpolation.fade))
     }
 
     fun addOverlayOnTileGroup(group: TileGroup, actor: Actor) {
