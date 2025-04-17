@@ -27,7 +27,7 @@ import kotlin.math.min
 
 object Automation {
 
-    fun rankTileForCityWork(tile: Tile, city: City, localUniqueCache: LocalUniqueCache = LocalUniqueCache(false)): Float {
+    fun rankTileForCityWork(tile: Tile, city: City, localUniqueCache: LocalUniqueCache): Float {
         val stats = tile.stats.getTileStats(city, city.civ, localUniqueCache)
         return rankStatsForCityWork(stats, city, false, localUniqueCache)
     }
@@ -484,8 +484,8 @@ object Automation {
             if (tile.tileResource.resourceType != ResourceType.Bonus) score -= 105
             else if (distance <= city.getWorkRange()) score -= 104
         } else {
-            // Water tiles without resources aren't great
-            if (tile.isWater) score += 25
+            // Water tiles without resources aren't great unless they're Atolls
+            if (tile.isWater) score += 3
             // Can't work it anyways
             if (distance > city.getWorkRange()) score += 100
         }
